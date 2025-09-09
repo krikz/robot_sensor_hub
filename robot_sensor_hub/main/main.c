@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>     // Для NAN, isnan
+#include <stdlib.h>   // Для malloc, free
 #include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
@@ -53,6 +54,9 @@ float weight_value = NAN;
 bool sensor_status[8] = {false};
 bool hx711_ok = false;
 
+// === Прототипы функций ===
+void publish_diagnostics(void);
+
 // === Таймер: вызывается каждые 500 мс ===
 void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
   (void)timer; (void)last_call_time;
@@ -62,21 +66,21 @@ void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
   weight_value = read_weight();
 
   // Получаем текущее время
-  rcl_time_point_t now;
-  rcl_ret_t ret = rcl_system_time_now(&now.nanoseconds);
+  uint64_t now_ns;
+  rcl_ret_t ret = rcutils_system_time_now(&now_ns);
   if (ret != RCL_RET_OK) return;
 
   // Публикация температуры и влажности
   for (int i = 0; i < 8; i++) {
     if (!isnan(temperatures[i])) {
-      temp_msgs[i].header.stamp.nanosec = now.nanoseconds % 1000000000UL;
-      temp_msgs[i].header.stamp.sec = now.nanoseconds / 1000000000UL;
+      temp_msgs[i].header.stamp.nanosec = now_ns % 1000000000UL;
+      temp_msgs[i].header.stamp.sec = now_ns / 1000000000UL;
       temp_msgs[i].temperature = temperatures[i];
       rcl_publish(&temp_pubs[i], &temp_msgs[i], NULL);
     }
     if (!isnan(humidities[i])) {
-      humidity_msgs[i].header.stamp.nanosec = now.nanoseconds % 1000000000UL;
-      humidity_msgs[i].header.stamp.sec = now.nanoseconds / 1000000000UL;
+      humidity_msgs[i].header.stamp.nanosec = now_ns % 1000000000UL;
+      humidity_msgs[i].header.stamp.sec = now_ns / 1000000000UL;
       humidity_msgs[i].relative_humidity = humidities[i] / 100.0f;
       rcl_publish(&humidity_pubs[i], &humidity_msgs[i], NULL);
     }
@@ -98,39 +102,73 @@ void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
   publish_diagnostics();
 }
 
-// === Заглушка для диагностики (временно) ===
-void publish_diagnostics() {
-  rcl_time_point_t now;
-  rcl_system_time_now(&now.nanoseconds);
+// === Публикация диагностики ===
+void publish_diagnostics(void) {
+  uint64_t now_ns;
+  rcutils_system_time_now(&now_ns);
 
-  diagnostics_msg.header.stamp.nanosec = now.nanoseconds % 1000000000UL;
-  diagnostics_msg.header.stamp.sec = now.nanoseconds / 1000000000UL;
+  diagnostics_msg.header.stamp.nanosec = now_ns % 1000000000UL;
+  diagnostics_msg.header.stamp.sec = now_ns / 1000000000UL;
 
-  // Пример: все AHT30 "OK"
-  for (int i = 0; i < 8; i++) {
-    if (i >= 8) break;
-    auto &s = diag_status[i];
-    s.name.data = (char*)malloc(64);
-    snprintf(s.name.data, 64, "AHT30 Sensor %d", i);
-    s.name.size = strlen(s.name.data);
-    s.name.capacity = 64;
-
-    if (sensor_status[i]) {
-      s.level = 0; // OK
-      s.message.data = (char*)malloc(16);
-      strcpy(s.message.data, "OK");
-    } else {
-      s.level = 2; // ERROR
-      s.message.data = (char*)malloc(16);
-      strcpy(s.message.data, "No Response");
+  // Очистка предыдущих сообщений (если были)
+  for (int i = 0; i < 10; i++) {
+    if (diag_status[i].name.data) {
+      free(diag_status[i].name.data);
+      diag_status[i].name.data = NULL;
     }
-    s.message.size = strlen(s.message.data);
-    s.message.capacity = 16;
+    if (diag_status[i].message.data) {
+      free(diag_status[i].message.data);
+      diag_status[i].message.data = NULL;
+    }
   }
 
+  int count = 0;
+  // AHT30 датчики
+  for (int i = 0; i < 8; i++) {
+    diagnostic_msgs__msg__DiagnosticStatus *s = &diag_status[count];
+    s->name.data = malloc(64);
+    snprintf(s->name.data, 64, "AHT30 Sensor %d", i);
+    s->name.size = strlen(s->name.data);
+    s->name.capacity = 64;
+
+    if (sensor_status[i]) {
+      s->level = 0; // OK
+      s->message.data = malloc(16);
+      strcpy(s->message.data, "OK");
+    } else {
+      s->level = 2; // ERROR
+      s->message.data = malloc(16);
+      strcpy(s->message.data, "No Response");
+    }
+    s->message.size = strlen(s->message.data);
+    s->message.capacity = 16;
+
+    count++;
+  }
+
+  // HX711
+  diagnostic_msgs__msg__DiagnosticStatus *s = &diag_status[count];
+  s->name.data = malloc(64);
+  strcpy(s->name.data, "Weight Sensor");
+  s->name.size = strlen(s->name.data);
+  s->name.capacity = 64;
+
+  if (hx711_ok) {
+    s->level = 0;
+    s->message.data = malloc(16);
+    strcpy(s->message.data, "OK");
+  } else {
+    s->level = 2;
+    s->message.data = malloc(16);
+    strcpy(s->message.data, "Not Responding");
+  }
+  s->message.size = strlen(s->message.data);
+  s->message.capacity = 16;
+  count++;
+
   diagnostics_msg.status.data = diag_status;
-  diagnostics_msg.status.size = 8;
-  diagnostics_msg.status.capacity = 8;
+  diagnostics_msg.status.size = count;
+  diagnostics_msg.status.capacity = 10;
 
   rcl_publish(&diagnostics_pub, &diagnostics_msg, NULL);
 }
@@ -139,8 +177,12 @@ void publish_diagnostics() {
 void app_main(void) {
   ESP_LOGI(TAG, "Starting robot_sensor_hub...");
 
-#if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
+#if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN)
   ESP_ERROR_CHECK(uros_network_interface_initialize());
+#elif defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
+  ESP_ERROR_CHECK(uros_network_interface_initialize());
+#else
+  ESP_LOGE(TAG, "Network interface not configured in menuconfig");
 #endif
 
   // Инициализация датчиков
