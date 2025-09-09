@@ -15,6 +15,7 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 
+#include <uros_network_interfaces.h>
 #include <std_msgs/msg/float32.h>
 #include <sensor_msgs/msg/temperature.h>
 #include <sensor_msgs/msg/relative_humidity.h>
@@ -66,21 +67,21 @@ void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
   weight_value = read_weight();
 
   // Получаем текущее время
-  uint64_t now_ns;
+  int64_t now_ns;  // Важно: int64_t, а не uint64_t
   rcl_ret_t ret = rcutils_system_time_now(&now_ns);
   if (ret != RCL_RET_OK) return;
 
   // Публикация температуры и влажности
   for (int i = 0; i < 8; i++) {
     if (!isnan(temperatures[i])) {
-      temp_msgs[i].header.stamp.nanosec = now_ns % 1000000000UL;
-      temp_msgs[i].header.stamp.sec = now_ns / 1000000000UL;
+      temp_msgs[i].header.stamp.nanosec = now_ns % 1000000000LL;
+      temp_msgs[i].header.stamp.sec = now_ns / 1000000000LL;
       temp_msgs[i].temperature = temperatures[i];
       rcl_publish(&temp_pubs[i], &temp_msgs[i], NULL);
     }
     if (!isnan(humidities[i])) {
-      humidity_msgs[i].header.stamp.nanosec = now_ns % 1000000000UL;
-      humidity_msgs[i].header.stamp.sec = now_ns / 1000000000UL;
+      humidity_msgs[i].header.stamp.nanosec = now_ns % 1000000000LL;
+      humidity_msgs[i].header.stamp.sec = now_ns / 1000000000LL;
       humidity_msgs[i].relative_humidity = humidities[i] / 100.0f;
       rcl_publish(&humidity_pubs[i], &humidity_msgs[i], NULL);
     }
@@ -104,13 +105,13 @@ void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
 
 // === Публикация диагностики ===
 void publish_diagnostics(void) {
-  uint64_t now_ns;
+  int64_t now_ns;
   rcutils_system_time_now(&now_ns);
 
-  diagnostics_msg.header.stamp.nanosec = now_ns % 1000000000UL;
-  diagnostics_msg.header.stamp.sec = now_ns / 1000000000UL;
+  diagnostics_msg.header.stamp.nanosec = now_ns % 1000000000LL;
+  diagnostics_msg.header.stamp.sec = now_ns / 1000000000LL;
 
-  // Очистка предыдущих сообщений (если были)
+  // Очистка предыдущих сообщений
   for (int i = 0; i < 10; i++) {
     if (diag_status[i].name.data) {
       free(diag_status[i].name.data);
@@ -142,7 +143,6 @@ void publish_diagnostics(void) {
     }
     s->message.size = strlen(s->message.data);
     s->message.capacity = 16;
-
     count++;
   }
 
@@ -183,6 +183,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(uros_network_interface_initialize());
 #else
   ESP_LOGE(TAG, "Network interface not configured in menuconfig");
+  return;
 #endif
 
   // Инициализация датчиков
