@@ -2,24 +2,21 @@
 #include "hx711_reader.h"
 #include <hx711.h>
 #include <esp_log.h>
-#include <math.h>                 // Для NAN
-#include <freertos/FreeRTOS.h>    // Для vTaskDelay
-#include <freertos/task.h>        // Для portTICK_PERIOD_MS
+#include <math.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 static const char *TAG = "HX711";
 
-// Конфигурация GPIO
-#define HX711_DOUT GPIO_NUM_32
-#define HX711_SCK GPIO_NUM_33
+// Конфигурация GPIO (только 0-21!)
+#define HX711_DOUT GPIO_NUM_10  // Был GPIO_NUM_2 -> Изменено на безопасный GPIO10
+#define HX711_SCK  GPIO_NUM_11  // Был GPIO_NUM_3 -> Изменено на безопасный GPIO11
 
-// Настройки
 #define HX711_GAIN HX711_GAIN_A_128
 #define AVG_TIMES 10
 
-// Калибровочный коэффициент (будет настраиваться через ROS2)
 static float calibration_factor = 1.0f;
 
-// Экземпляр датчика
 static hx711_t hx711_dev = {
     .dout = HX711_DOUT,
     .pd_sck = HX711_SCK,
@@ -46,7 +43,6 @@ float read_weight(void) {
         return NAN;
     }
 
-    // Применяем калибровку
     return (float)raw / calibration_factor;
 }
 
@@ -58,23 +54,20 @@ void set_calibration_factor(float factor) {
 }
 
 void tare_scale(void) {
-    // Простая тарировка: считаем среднее и вычитаем из показаний
     int32_t sum = 0;
     int32_t raw;
     bool ready;
 
     for (int i = 0; i < 10; i++) {
-        // Исправлено: передаём &ready
         while (hx711_is_ready(&hx711_dev, &ready) != ESP_OK || !ready) {
             vTaskDelay(10 / portTICK_PERIOD_MS);
         }
-        // Исправлено: используем hx711_read_data вместо hx711_read_raw
         hx711_read_data(&hx711_dev, &raw);
         sum += raw;
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
 
     int32_t offset = sum / 10;
-    calibration_factor = -offset; // Упрощённая тарировка
+    calibration_factor = -offset;
     ESP_LOGI(TAG, "Tare complete. Offset: %" PRId32, offset);
 }

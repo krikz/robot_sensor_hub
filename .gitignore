@@ -3,3 +3,5 @@
 secrets.h
 *.bak
 Thumbs.db
+build
+managed_components

@@ -4,7 +4,7 @@
 #include <math.h>     // Для NAN, isnan
 #include <stdlib.h>   // Для malloc, free
 #include <unistd.h>
-
+#include <i2cdev.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -174,55 +174,100 @@ void publish_diagnostics(void) {
 }
 
 // === Инициализация и основной цикл ===
+// === Инициализация и основной цикл ===
 void app_main(void) {
-  ESP_LOGI(TAG, "Starting robot_sensor_hub...");
+    ESP_LOGI(TAG, "Starting robot_sensor_hub...");
+
+    // 1. Инициализация драйвера i2cdev от esp-idf-lib
+    ESP_LOGI(TAG, "Initializing i2cdev driver...");
+    ESP_ERROR_CHECK(i2cdev_init());
+    ESP_LOGI(TAG, "i2cdev driver initialized.");
 
 #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN)
-  ESP_ERROR_CHECK(uros_network_interface_initialize());
+    ESP_ERROR_CHECK(uros_network_interface_initialize());
 #elif defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
-  ESP_ERROR_CHECK(uros_network_interface_initialize());
+    ESP_ERROR_CHECK(uros_network_interface_initialize());
 #else
-  ESP_LOGE(TAG, "Network interface not configured in menuconfig");
-  return;
+    ESP_LOGE(TAG, "Network interface not configured in menuconfig");
+    return;
 #endif
 
-  // Инициализация датчиков
-  init_aht30_sensors();
-  init_hx711();
-  init_fan_controller();
+    // 2. Инициализация датчиков
+    init_aht30_sensors();
+    init_hx711();
+    init_fan_controller();
 
-  // Инициализация micro-ROS
-  rcl_allocator_t allocator = rcl_get_default_allocator();
-  rclc_support_init(&support, 0, NULL, &allocator);
+    // === НАЧАЛО ИНИЦИАЛИЗАЦИИ MICRO-ROS (СОВМЕСТИМЫЙ СТИЛЬ) ===
+    rcl_allocator_t allocator = rcl_get_default_allocator();
 
-  rclc_node_init_default(&node, "sensor_hub", "", &support);
-  ESP_LOGI(TAG, "micro-ROS node created");
+    // Используйте стандартную инициализацию без _zero()
+    rclc_support_t support;
+    rcl_ret_t rc = rclc_support_init(&support, 0, NULL, &allocator);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "Failed to initialize rclc support: %s", rcl_get_error_string().str);
+        return;
+    }
 
-  // Создание паблишеров
-  for (int i = 0; i < 8; i++) {
-    char topic[64];
-    snprintf(topic, sizeof(topic), "sensor/temperature_%d", i);
-    rclc_publisher_init_default(&temp_pubs[i], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Temperature), topic);
-    snprintf(topic, sizeof(topic), "sensor/humidity_%d", i);
-    rclc_publisher_init_default(&humidity_pubs[i], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, RelativeHumidity), topic);
-  }
+    rcl_node_t node;
+    rc = rclc_node_init_default(&node, "sensor_hub", "", &support);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "Failed to create node: %s", rcl_get_error_string().str);
+        goto cleanup;
+    }
+    ESP_LOGI(TAG, "micro-ROS node created");
 
-  rclc_publisher_init_default(&weight_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "sensor/weight");
-  rclc_publisher_init_default(&fan_telem_pubs[0], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "fan/fan1/telemetry");
-  rclc_publisher_init_default(&fan_telem_pubs[1], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "fan/fan2/telemetry");
-  rclc_publisher_init_default(&diagnostics_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(diagnostic_msgs, msg, DiagnosticArray), "diagnostics");
+    // Создание паблишеров
+    for (int i = 0; i < 8; i++) {
+        char topic[64];
+        snprintf(topic, sizeof(topic), "sensor/temperature_%d", i);
+        rclc_publisher_init_default(&temp_pubs[i], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Temperature), topic);
 
-  // Таймер (500 мс)
-  const uint64_t timer_timeout = 500;
-  rclc_timer_init_default2(&timer, &support, RCL_MS_TO_NS(timer_timeout), timer_callback, true);
+        snprintf(topic, sizeof(topic), "sensor/humidity_%d", i);
+        rclc_publisher_init_default(&humidity_pubs[i], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, RelativeHumidity), topic);
+    }
 
-  // Executor
-  rclc_executor_init(&executor, &support.context, 5, &allocator);
-  rclc_executor_add_timer(&executor, &timer);
+    rclc_publisher_init_default(&weight_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "sensor/weight");
+    rclc_publisher_init_default(&fan_telem_pubs[0], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "fan/fan1/telemetry");
+    rclc_publisher_init_default(&fan_telem_pubs[1], &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "fan/fan2/telemetry");
+    rclc_publisher_init_default(&diagnostics_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(diagnostic_msgs, msg, DiagnosticArray), "diagnostics");
 
-  ESP_LOGI(TAG, "Ready. Spinning executor...");
-  while (1) {
-    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-    usleep(10000);
-  }
+    // Таймер (500 мс)
+    rcl_timer_t timer;
+    const uint64_t timer_period_ms = 500;
+    // ИСПОЛЬЗУЕМ rclc_timer_init_default, А НЕ rclc_timer_init_default2
+    rc = rclc_timer_init_default(
+        &timer,
+        &support,
+        RCL_MS_TO_NS(timer_period_ms),
+        timer_callback);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "Failed to create timer: %s", rcl_get_error_string().str);
+        goto cleanup;
+    }
+
+    // Executor
+    rclc_executor_t executor;
+    rc = rclc_executor_init(&executor, &support.context, 5, &allocator);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "Failed to initialize executor: %s", rcl_get_error_string().str);
+        goto cleanup;
+    }
+
+    rc = rclc_executor_add_timer(&executor, &timer);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "Failed to add timer to executor: %s", rcl_get_error_string().str);
+        goto cleanup;
+    }
+    // === КОНЕЦ ИНИЦИАЛИЗАЦИИ MICRO-ROS ===
+
+    ESP_LOGI(TAG, "Ready. Spinning executor...");
+    while (1) {
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+        usleep(10000);
+    }
+
+cleanup:
+    // Очистка ресурсов
+    rcl_node_fini(&node);
+    rclc_support_fini(&support);
 }

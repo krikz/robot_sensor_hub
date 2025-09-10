@@ -5,20 +5,18 @@
 
 static const char *TAG = "FAN";
 
-// Конфигурация GPIO и каналов
-#define FAN1_PIN GPIO_NUM_25
-#define FAN2_PIN GPIO_NUM_26
+// Конфигурация GPIO (только 0-21!)
+#define FAN1_PIN GPIO_NUM_12   // Был GPIO_NUM_4 -> Изменено на безопасный GPIO12
+#define FAN2_PIN GPIO_NUM_13   // Был GPIO_NUM_5 -> Изменено на безопасный GPIO13
 
 #define FAN1_CHANNEL LEDC_CHANNEL_0
 #define FAN2_CHANNEL LEDC_CHANNEL_1
 
-// Глобальные переменные
 static float fan_speeds[2] = {0.0f};
 
 void init_fan_controller(void) {
     ESP_LOGI(TAG, "Initializing fan controller...");
 
-    // Конфигурация таймера LEDC
     ledc_timer_config_t timer_conf = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_8_BIT,
@@ -27,7 +25,6 @@ void init_fan_controller(void) {
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer_conf));
 
-    // Конфигурация канала 1
     ledc_channel_config_t ch_conf = {
         .gpio_num = FAN1_PIN,
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -38,7 +35,6 @@ void init_fan_controller(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
 
-    // Конфигурация канала 2
     ch_conf.gpio_num = FAN2_PIN;
     ch_conf.channel = FAN2_CHANNEL;
     ESP_ERROR_CHECK(ledc_channel_config(&ch_conf));
