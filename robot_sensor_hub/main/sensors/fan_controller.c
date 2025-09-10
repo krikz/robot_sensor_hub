@@ -6,8 +6,8 @@
 static const char *TAG = "FAN";
 
 // Конфигурация GPIO (только 0-21!)
-#define FAN1_PIN GPIO_NUM_12   // Был GPIO_NUM_4 -> Изменено на безопасный GPIO12
-#define FAN2_PIN GPIO_NUM_13   // Был GPIO_NUM_5 -> Изменено на безопасный GPIO13
+#define FAN1_PIN GPIO_NUM_2   // Был GPIO_NUM_12 -> Изменено на GPIO14
+#define FAN2_PIN GPIO_NUM_1   // Был GPIO_NUM_13 -> Изменено на GPIO15
 
 #define FAN1_CHANNEL LEDC_CHANNEL_0
 #define FAN2_CHANNEL LEDC_CHANNEL_1
