@@ -3,14 +3,9 @@
 
 #include <Arduino.h>
 
-// 📡 ROS2 Topics
-#define TOPIC_WEIGHT_CALIBRATE "weight/calibration_factor"
-#define TOPIC_WEIGHT_TARE      "weight/tare"
-#define TOPIC_WEIGHT           "sensor/weight"
-
 // 🧩 Аппаратные настройки
-#define NUM_AHT30_SENSORS      4
 #define TCA9548A_ADDR          0x70
+#define TCA9548A_CHANNEL_COUNT 8   // Мультиплексор имеет 8 каналов
 
 // I2C
 #define I2C_SDA_PIN            7
@@ -30,3 +25,8 @@
 
 // ⏱️ Период опроса (мс)
 #define SENSOR_READ_INTERVAL   500   // Каждые 500 мс
+
+// 📡 ROS2 Topics
+#define TOPIC_WEIGHT_CALIBRATE "weight/calibration_factor"
+#define TOPIC_WEIGHT_TARE      "weight/tare"
+#define TOPIC_WEIGHT           "sensor/weight"
