@@ -5,3 +5,5 @@ secrets.h
 Thumbs.db
 build
 managed_components
+.cmake
+build_msgs
