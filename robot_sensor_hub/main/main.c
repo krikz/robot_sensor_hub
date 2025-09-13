@@ -26,19 +26,23 @@
 #include <math.h>
 #include <robot_sensor_hub_msg/msg/device_data.h>
 #include <robot_sensor_hub_msg/msg/device_command.h>
+#include <robot_sensor_hub_msg/msg/device_snapshot.h>  // Новое сообщение
 
 static const char *TAG = "sensor_hub";
 
 // === Глобальные переменные ===
-// Один паблишер для всех данных от ESP32
-rcl_publisher_t data_pub;
+// Паблишер для снапшота данных
+rcl_publisher_t snapshot_pub;
 
-// Подписчик на команды, приходящие на ESP32
+// Подписчик на команды
 rcl_subscription_t command_sub;
 
 // Сообщения
-robot_sensor_hub_msg__msg__DeviceData data_msg;
+robot_sensor_hub_msg__msg__DeviceSnapshot snapshot_msg;
 robot_sensor_hub_msg__msg__DeviceCommand command_msg;
+
+// Массив для временного хранения данных
+robot_sensor_hub_msg__msg__DeviceData device_data_buffer[11]; // 8 AHT30 + 1 HX711 + 2 FAN
 
 // Объекты ROS2
 rclc_executor_t executor;
@@ -64,54 +68,80 @@ rcl_timer_t timer;
 #define COMMAND_TARE_SCALE    1
 
 
-// === Вспомогательная функция для публикации ===
-void publish_device_data(uint8_t dev_type, uint8_t dev_id, uint8_t data_type, float value, uint8_t error_code) {
-    ESP_LOGI(TAG, "publish_device_data");
-    robot_sensor_hub_msg__msg__DeviceData__init(&data_msg);
-    data_msg.device_type = dev_type;
-    data_msg.device_id = dev_id;
-    data_msg.data_type = data_type;
-    data_msg.value = value;
-    data_msg.error_code = error_code;
-    rcl_time_point_value_t now_ns;
-    rcl_ret_t ret = rcl_clock_get_now(&(support.clock), &now_ns);
-    if (ret != RCL_RET_OK) {
-        ESP_LOGE(TAG, "Failed to get current time");
-    } else {
-        data_msg.timestamp = now_ns;
-    }
-    RCSOFTCHECK(rcl_publish(&data_pub, &data_msg, NULL));
-}
-
 // === Callback таймера (публикация данных) ===
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
-    ESP_LOGI(TAG, "timer_callback");
     (void) last_call_time;
     if (timer != NULL) {
         float temps[8], hums[8];
         read_all_aht30(temps, hums);
         float weight = read_weight();
-
-        // === Публикация данных с AHT30 ===
+        int device_count = 0;
+        
+        // === Сбор данных с AHT30 ===
         for (int i = 0; i < 8; i++) {
             if (!isnan(temps[i])) {
-                publish_device_data(DEVICE_TYPE_AHT30, i, DATA_TYPE_TEMPERATURE, temps[i], 0);
+                robot_sensor_hub_msg__msg__DeviceData__init(&device_data_buffer[device_count]);
+                device_data_buffer[device_count].device_type = DEVICE_TYPE_AHT30;
+                device_data_buffer[device_count].device_id = i;
+                device_data_buffer[device_count].data_type = DATA_TYPE_TEMPERATURE;
+                device_data_buffer[device_count].value = temps[i];
+                device_data_buffer[device_count].error_code = 0;
+                device_count++;
             }
+            
             if (!isnan(hums[i])) {
-                publish_device_data(DEVICE_TYPE_AHT30, i, DATA_TYPE_HUMIDITY, hums[i], 0);
+                robot_sensor_hub_msg__msg__DeviceData__init(&device_data_buffer[device_count]);
+                device_data_buffer[device_count].device_type = DEVICE_TYPE_AHT30;
+                device_data_buffer[device_count].device_id = i;
+                device_data_buffer[device_count].data_type = DATA_TYPE_HUMIDITY;
+                device_data_buffer[device_count].value = hums[i];
+                device_data_buffer[device_count].error_code = 0;
+                device_count++;
             }
         }
 
-        // === Публикация данных с HX711 ===
+        // === Сбор данных с HX711 ===
         if (!isnan(weight)) {
-            publish_device_data(DEVICE_TYPE_HX711, 0, DATA_TYPE_WEIGHT, weight, 0);
+            robot_sensor_hub_msg__msg__DeviceData__init(&device_data_buffer[device_count]);
+            device_data_buffer[device_count].device_type = DEVICE_TYPE_HX711;
+            device_data_buffer[device_count].device_id = 0;
+            device_data_buffer[device_count].data_type = DATA_TYPE_WEIGHT;
+            device_data_buffer[device_count].value = weight;
+            device_data_buffer[device_count].error_code = 0;
+            device_count++;
         }
 
-        // === Публикация данных с кулерами ===
+        // === Сбор данных с кулеров ===
         for (int i = 0; i < 2; i++) {
-            publish_device_data(DEVICE_TYPE_FAN, i, DATA_TYPE_SPEED, get_fan_speed(i), 0);
+            robot_sensor_hub_msg__msg__DeviceData__init(&device_data_buffer[device_count]);
+            device_data_buffer[device_count].device_type = DEVICE_TYPE_FAN;
+            device_data_buffer[device_count].device_id = i;
+            device_data_buffer[device_count].data_type = DATA_TYPE_SPEED;
+            device_data_buffer[device_count].value = get_fan_speed(i);
+            device_data_buffer[device_count].error_code = 0;
+            device_count++;
         }
+        
+        // === Публикация снапшота ===
+        // Инициализируем снапшот
+        robot_sensor_hub_msg__msg__DeviceSnapshot__init(&snapshot_msg);
+        
+        // Устанавливаем количество устройств
+        snapshot_msg.devices.size = device_count;
+        snapshot_msg.devices.capacity = 11; // Максимальное количество
+        snapshot_msg.devices.data = device_data_buffer;
+        
+        // Устанавливаем временну́ю метку
+        rcl_time_point_value_t now_ns;
+        rcl_ret_t ret = rcl_clock_get_now(&(support.clock), &now_ns);
+        if (ret != RCL_RET_OK) {
+            ESP_LOGE(TAG, "Failed to get current time");
+        }
+        
+        // Публикуем снапшот
+        RCSOFTCHECK(rcl_publish(&snapshot_pub, &snapshot_msg, NULL));
+        ESP_LOGI(TAG, "Published snapshot with %d devices", device_count);
     }
 }
 
@@ -185,12 +215,12 @@ void micro_ros_task(void * arg)
     RCCHECK(rclc_node_init_default(&node, "sensor_hub", "", &support));
     ESP_LOGI(TAG, "micro-ROS node created");
 
-    // 6. Создание паблишера (данные)
+    // 6. Создание паблишера (снапшот)
     RCCHECK(rclc_publisher_init_default(
-        &data_pub,
+        &snapshot_pub,
         &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(robot_sensor_hub_msg, msg, DeviceData),
-        "device/data"));
+        ROSIDL_GET_MSG_TYPE_SUPPORT(robot_sensor_hub_msg, msg, DeviceSnapshot),
+        "device/snapshot"));
 
     // 7. Создание подписчика (команды)
     RCCHECK(rclc_subscription_init_default(
@@ -202,11 +232,11 @@ void micro_ros_task(void * arg)
     // 8. Таймер (1000 мс)
     timer = rcl_get_zero_initialized_timer();
     const uint64_t timer_period_ms = 1000;
-    RCCHECK(rclc_timer_init_default2(
+    RCCHECK(rclc_timer_init_default(
         &timer,
         &support,
         RCL_MS_TO_NS(timer_period_ms),
-        timer_callback, true));
+        timer_callback));
 
 
     ESP_LOGI(TAG, "Waiting for micro-ROS agent...");
@@ -236,8 +266,6 @@ void micro_ros_task(void * arg)
 
     ESP_LOGI(TAG, "Ready. Spinning executor...");
     while (1) {
-
-        //ESP_LOGI(TAG, "Spinning");
         rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
         usleep(100000); // 100ms
     }
