@@ -123,5 +123,5 @@ direct_dependencies:
 - esp-idf-lib/tca9548
 - idf
 manifest_hash: c38f2f2234039c020dfd6c55bae9128ae2f4be7438e7541431a3c4676298e8b2
-target: esp32c3
+target: esp32
 version: 2.0.0

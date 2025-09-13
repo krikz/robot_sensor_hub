@@ -66,6 +66,7 @@ rcl_timer_t timer;
 
 // === Вспомогательная функция для публикации ===
 void publish_device_data(uint8_t dev_type, uint8_t dev_id, uint8_t data_type, float value, uint8_t error_code) {
+    ESP_LOGI(TAG, "publish_device_data");
     robot_sensor_hub_msg__msg__DeviceData__init(&data_msg);
     data_msg.device_type = dev_type;
     data_msg.device_id = dev_id;
@@ -85,6 +86,7 @@ void publish_device_data(uint8_t dev_type, uint8_t dev_id, uint8_t data_type, fl
 // === Callback таймера (публикация данных) ===
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
+    ESP_LOGI(TAG, "timer_callback");
     (void) last_call_time;
     if (timer != NULL) {
         float temps[8], hums[8];
@@ -197,9 +199,9 @@ void micro_ros_task(void * arg)
         ROSIDL_GET_MSG_TYPE_SUPPORT(robot_sensor_hub_msg, msg, DeviceCommand),
         "device/command"));
 
-    // 8. Таймер (500 мс)
+    // 8. Таймер (1000 мс)
     timer = rcl_get_zero_initialized_timer();
-    const uint64_t timer_period_ms = 500;
+    const uint64_t timer_period_ms = 1000;
     RCCHECK(rclc_timer_init_default2(
         &timer,
         &support,
@@ -223,7 +225,7 @@ void micro_ros_task(void * arg)
     // 9. Executor
     executor = rclc_executor_get_zero_initialized_executor();
     RCCHECK(rclc_executor_init(&executor, &support.context, 2, &allocator)); // 2 - хватит для таймера и подписчика
-    unsigned int rcl_wait_timeout = 100;
+    unsigned int rcl_wait_timeout = 1000;
     RCCHECK(rclc_executor_set_timeout(&executor, RCL_MS_TO_NS(rcl_wait_timeout)));
 
     // Добавление таймера
@@ -234,6 +236,8 @@ void micro_ros_task(void * arg)
 
     ESP_LOGI(TAG, "Ready. Spinning executor...");
     while (1) {
+
+        //ESP_LOGI(TAG, "Spinning");
         rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
         usleep(100000); // 100ms
     }
@@ -255,13 +259,11 @@ void app_main(void) {
     return;
 #endif
 
-    // Создаем задачу для micro-ROS
     xTaskCreate(micro_ros_task,
-                "micro_ros_task",
-                32768, // Увеличенный размер стека
-                NULL,
-                5,
-                NULL);
-
+            "uros_task",
+            32768,
+            NULL,
+            5,
+            NULL);
     // app_main больше ничего не делает
 }

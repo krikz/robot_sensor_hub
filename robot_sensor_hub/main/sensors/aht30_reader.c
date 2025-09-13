@@ -9,8 +9,8 @@ static const char *TAG = "AHT30";
 
 // Конфигурация I2C
 #define I2C_PORT 0
-#define I2C_SDA GPIO_NUM_8   // Был GPIO_NUM_0 -> Изменено на безопасный GPIO6
-#define I2C_SCL GPIO_NUM_9   // Был GPIO_NUM_1 -> Изменено на безопасный GPIO7
+#define I2C_SDA GPIO_NUM_21
+#define I2C_SCL GPIO_NUM_22
 
 // Адрес TCA9548A
 #define TCA9548_ADDR TCA9548_ADDR_0

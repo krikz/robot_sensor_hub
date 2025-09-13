@@ -9,8 +9,8 @@
 static const char *TAG = "HX711";
 
 // Конфигурация GPIO (только 0-21!)
-#define HX711_DOUT GPIO_NUM_10  // Был GPIO_NUM_2 -> Изменено на безопасный GPIO10
-#define HX711_SCK  GPIO_NUM_7  // Был GPIO_NUM_3 -> Изменено на безопасный GPIO11
+#define HX711_DOUT GPIO_NUM_18  // D18 - безопасный пин
+#define HX711_SCK GPIO_NUM_19   // D19 - безопасный пин
 
 #define HX711_GAIN HX711_GAIN_A_128
 #define AVG_TIMES 10
