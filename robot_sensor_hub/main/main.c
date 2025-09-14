@@ -42,7 +42,7 @@ robot_sensor_hub_msg__msg__DeviceSnapshot snapshot_msg;
 robot_sensor_hub_msg__msg__DeviceCommand command_msg;
 
 // Массив для временного хранения данных
-robot_sensor_hub_msg__msg__DeviceData device_data_buffer[11]; // 8 AHT30 + 1 HX711 + 2 FAN
+robot_sensor_hub_msg__msg__DeviceData device_data_buffer[13]; // 8 AHT30 + 1 HX711 + 2 FAN
 
 // Объекты ROS2
 rclc_executor_t executor;
@@ -63,6 +63,7 @@ rcl_timer_t timer;
 #define DATA_TYPE_HUMIDITY    2
 #define DATA_TYPE_WEIGHT      3
 #define DATA_TYPE_SPEED       4
+#define DATA_TYPE_RPM         5
 
 #define COMMAND_SET_SPEED     0
 #define COMMAND_TARE_SCALE    1
@@ -121,6 +122,13 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
             device_data_buffer[device_count].value = get_fan_speed(i);
             device_data_buffer[device_count].error_code = 0;
             device_count++;
+            robot_sensor_hub_msg__msg__DeviceData__init(&device_data_buffer[device_count]);
+            device_data_buffer[device_count].device_type = DEVICE_TYPE_FAN;
+            device_data_buffer[device_count].device_id = i;
+            device_data_buffer[device_count].data_type = DATA_TYPE_RPM;
+            device_data_buffer[device_count].value = (float)get_fan_rpm(i);
+            device_data_buffer[device_count].error_code = 0;
+            device_count++;
         }
         
         // === Публикация снапшота ===
@@ -129,7 +137,7 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
         
         // Правильно выделяем память для массива
         snapshot_msg.devices.size = device_count;
-        snapshot_msg.devices.capacity = 11;
+        snapshot_msg.devices.capacity = 13;
         snapshot_msg.devices.data = (robot_sensor_hub_msg__msg__DeviceData*)malloc(
             sizeof(robot_sensor_hub_msg__msg__DeviceData) * snapshot_msg.devices.capacity);
             
