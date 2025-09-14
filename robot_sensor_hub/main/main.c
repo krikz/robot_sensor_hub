@@ -127,10 +127,21 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
         // Инициализируем снапшот
         robot_sensor_hub_msg__msg__DeviceSnapshot__init(&snapshot_msg);
         
-        // Устанавливаем количество устройств
+        // Правильно выделяем память для массива
         snapshot_msg.devices.size = device_count;
-        snapshot_msg.devices.capacity = 11; // Максимальное количество
-        snapshot_msg.devices.data = device_data_buffer;
+        snapshot_msg.devices.capacity = 11;
+        snapshot_msg.devices.data = (robot_sensor_hub_msg__msg__DeviceData*)malloc(
+            sizeof(robot_sensor_hub_msg__msg__DeviceData) * snapshot_msg.devices.capacity);
+            
+        if (!snapshot_msg.devices.data) {
+            ESP_LOGE(TAG, "Failed to allocate memory for devices");
+            return;
+        }
+
+        // Копируем данные
+        for (int i = 0; i < device_count; i++) {
+            robot_sensor_hub_msg__msg__DeviceData__copy(&device_data_buffer[i], &snapshot_msg.devices.data[i]);
+        }
         
         // Устанавливаем временну́ю метку
         rcl_time_point_value_t now_ns;
@@ -142,6 +153,9 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
         // Публикуем снапшот
         RCSOFTCHECK(rcl_publish(&snapshot_pub, &snapshot_msg, NULL));
         ESP_LOGI(TAG, "Published snapshot with %d devices", device_count);
+        
+        // Освобождаем память после публикации
+        robot_sensor_hub_msg__msg__DeviceSnapshot__fini(&snapshot_msg);
     }
 }
 
