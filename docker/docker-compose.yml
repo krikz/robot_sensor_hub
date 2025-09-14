@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  microros-esp32-builder:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+      args:
+        - MICROROS_VERSION=humble  # Можно изменить на нужную версию
+    container_name: microros_esp32_builder
+    volumes:
+      - ../:/project  # Монтируем весь проект
+    working_dir: /project/firmware
+    tty: true
+    stdin_open: true
+    privileged: true  # Для доступа к USB устройствам
+    environment:
+      - IDF_PATH=/opt/esp/idf
+      - MICROROS_PATH=/opt/micro_ros_espidf
+    # Для Linux: пробрасываем USB устройства
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+      - "/dev/ttyACM0:/dev/ttyACM0"
+    # Для Windows: используем usbipd
+    # devices: [] # Раскомментировать для Windows
