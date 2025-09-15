@@ -116,7 +116,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
+    version: 5.1.6
 direct_dependencies:
 - esp-idf-lib/aht
 - esp-idf-lib/hx711
