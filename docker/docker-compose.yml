@@ -4,9 +4,6 @@ services:
       context: ../
       dockerfile: docker/Dockerfile
     container_name: microros_esp32_builder
-    volumes:
-      - ../firmware:/project
-      - ../robot_sensor_hub_msg:/project/components/micro_ros_espidf_component/extra_packages/robot_sensor_hub_msg
     working_dir: /project
     tty: true
     stdin_open: true
