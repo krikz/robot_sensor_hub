@@ -1,30 +1,69 @@
-FROM espressif/idf:release-v5.2
+# Используем официальный образ ROS 2 Humble
+FROM ros:humble
 
-# Устанавливаем необходимые зависимости
+# Устанавливаем необходимые зависимости для ESP-IDF
 RUN apt-get update && apt-get install -y \
-    python3-pip \
     git \
+    wget \
+    flex \
+    bison \
+    gperf \
+    python3 \
+    python3-pip \
+    python3-venv \
+    cmake \
+    ninja-build \
+    ccache \
+    libffi-dev \
+    libssl-dev \
+    dfu-util \
+    libusb-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN . $IDF_PATH/export.sh && pip3 install catkin_pkg lark-parser colcon-common-extensions
-RUN pip3 install --upgrade empy
-WORKDIR /project
+# Устанавливаем дополнительные зависимости для micro-ROS
+RUN apt-get update && apt-get install -y \
+    python3-rosdep \
+    python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
 
+# Устанавливаем ESP-IDF v5.2
+WORKDIR /opt
+RUN git clone -b v5.2 --recursive https://github.com/espressif/esp-idf.git
+WORKDIR /opt/esp-idf
+RUN ./install.sh all
 
-# Создаем папку components и клонируем micro-ROS компоненты
-RUN mkdir -p components && \
-    git clone -b humble https://github.com/micro-ROS/micro_ros_espidf_component.git components/micro_ros_espidf_component
+# Добавляем ESP-IDF в PATH
+ENV IDF_PATH=/opt/esp-idf
+ENV PATH="${IDF_PATH}/tools:${PATH}"
+
+# Создаем рабочее пространство для micro-ROS
+WORKDIR /uros_ws
+#RUN source /opt/ros/$ROS_DISTRO/setup.bash
+RUN git clone -b humble https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup
+RUN sudo apt update && rosdep update
+RUN rosdep install --from-paths src --ignore-src -y
+RUN sudo apt-get install python3-pip
+RUN colcon build
+RUN source install/local_setup.sh
+
+# Клонируем компонент micro-ROS для ESP-IDF
+RUN mkdir -p /project/components
+RUN git clone -b humble https://github.com/micro-ROS/micro_ros_espidf_component.git /project/components/micro_ros_espidf_component
 
 # Копируем пользовательские сообщения
-COPY robot_sensor_hub_msg/ components/micro_ros_espidf_component/extra_packages/robot_sensor_hub_msg/
+COPY robot_sensor_hub_msg/ /project/components/micro_ros_espidf_component/extra_packages/robot_sensor_hub_msg/
 
 # Копируем исходники проекта
 COPY firmware/ /project/
 
-# Собираем проект
-RUN  . $IDF_PATH/export.sh && idf.py build
-
 # Устанавливаем переменные окружения
-ENV IDF_PATH=/opt/esp/idf
+ENV IDF_PATH=/opt/esp-idf
+ENV PATH="${IDF_PATH}/tools:${PATH}"
+
+# Собираем проект
+WORKDIR /project
+RUN source /opt/ros/humble/setup.sh && \
+    source /uros_ws/install/local_setup.sh && \
+    idf.py build
 
 ENTRYPOINT ["/bin/bash"]
