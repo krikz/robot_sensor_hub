@@ -69,9 +69,6 @@ COPY robot_sensor_hub_msg/ /project/components/micro_ros_espidf_component/extra_
 
 # Копируем проект
 COPY firmware/ /project/
-
-WORKDIR /project/components
-RUN . $IDF_PATH/export.sh && idf.py build
 WORKDIR /project
 
 # Собираем проект
