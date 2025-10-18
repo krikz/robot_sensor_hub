@@ -8,16 +8,15 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "driver/uart.h"
 
 #include <uros_network_interfaces.h>
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
-
-#ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
 #include <rmw_microros/rmw_microros.h>
-#endif
+#include "esp32_serial_transport.h"
 
 #include <i2cdev.h> // Для i2cdev_init()
 #include "sensors/aht30_reader.h"
@@ -219,15 +218,29 @@ void micro_ros_task(void * arg)
     init_hx711();
     init_fan_controller();
 
+    // 3. Настройка UART транспорта для micro-ROS
+    // ВАЖНО: Используем UART2, чтобы не конфликтовать с UART0 (консоль/прошивка)
+    // UART0 - используется для консоли ESP32 и прошивки через USB
+    // UART2 - используется для связи с micro-ROS Agent
+    static size_t uart_port = UART_NUM_2;
+#if defined(RMW_UXRCE_TRANSPORT_CUSTOM)
+    rmw_uros_set_custom_transport(
+        true,
+        (void *) &uart_port,
+        esp32_serial_open,
+        esp32_serial_close,
+        esp32_serial_write,
+        esp32_serial_read
+    );
+    ESP_LOGI(TAG, "UART2 transport configured for micro-ROS (TX=%d, RX=%d)", 
+             CONFIG_MICROROS_UART_TXD, CONFIG_MICROROS_UART_RXD);
+#else
+#error micro-ROS transport not configured for custom UART
+#endif
 
     rcl_allocator_t allocator = rcl_get_default_allocator();
     rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
     RCCHECK(rcl_init_options_init(&init_options, allocator));
-
-#ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
-    rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
-    RCCHECK(rmw_uros_options_set_udp_address(CONFIG_MICRO_ROS_AGENT_IP, CONFIG_MICRO_ROS_AGENT_PORT, rmw_options));
-#endif
 
     // 4. Инициализация support
     RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
