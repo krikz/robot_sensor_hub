@@ -33,7 +33,8 @@ void init_aht30_sensors(void) {
     
 #if USE_TCA9548A
     // Инициализация I2C
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    Wire.setClock(I2C_FREQ);
     delay(100);
     
     // Проверка наличия TCA9548A

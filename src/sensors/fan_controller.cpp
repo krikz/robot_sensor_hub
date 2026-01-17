@@ -13,8 +13,13 @@ static unsigned long last_measurement_time[2] = {0, 0};
 static float fan_speeds[2] = {0.0f, 0.0f};
 
 // Fan pin configuration from target
+#if NUM_FANS >= 2
 static const uint8_t fan_pwm_pins[2] = {FAN0_PWM_PIN, FAN1_PWM_PIN};
 static const uint8_t fan_tacho_pins[2] = {FAN0_TACHO_PIN, FAN1_TACHO_PIN};
+#else
+static const uint8_t fan_pwm_pins[1] = {FAN0_PWM_PIN};
+static const uint8_t fan_tacho_pins[1] = {FAN0_TACHO_PIN};
+#endif
 
 // Обработчики прерываний для тахометров
 void IRAM_ATTR tacho0_isr() {
