@@ -209,6 +209,9 @@ void process_request() {
                 case CMD_GET_SENSORS:
                     cmd_get_sensors();
                     break;
+                case CMD_TARE_SCALE:
+                    cmd_tare_scale();
+                    break;
                 case CMD_GET_ALL_DATA:
                     cmd_get_all_data();
                     break;
@@ -244,9 +247,6 @@ void process_request() {
                     }
                     break;
                 }
-                case CMD_TARE_SCALE:
-                    cmd_tare_scale();
-                    break;
                 default:
                     send_response(RESP_INVALID_CMD, "Unknown command");
                     break;
