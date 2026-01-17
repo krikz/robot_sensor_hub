@@ -77,7 +77,10 @@ void set_fan_speed(int fan_id, float speed) {
 }
 
 float get_fan_speed(int fan_id) {
-    if (fan_id < 0 || fan_id > 1) return 0.0f;
+    if (fan_id < 0 || fan_id > 1) {
+        Serial.printf("[FAN] ERROR: Invalid fan_id %d\n", fan_id);
+        return NAN;  // Use NAN to indicate invalid input
+    }
     return fan_speeds[fan_id];
 }
 

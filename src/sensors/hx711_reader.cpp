@@ -40,11 +40,13 @@ float read_weight(void) {
 }
 
 void set_calibration_factor(float factor) {
-    if (factor != 0.0f) {
-        calibration_factor = factor;
-        scale.set_scale(factor);
-        Serial.printf("[HX711] Calibration factor set to %.2f\n", factor);
+    if (factor == 0.0f) {
+        Serial.println("[HX711] WARNING: Cannot set calibration factor to 0");
+        return;
     }
+    calibration_factor = factor;
+    scale.set_scale(factor);
+    Serial.printf("[HX711] Calibration factor set to %.2f\n", factor);
 }
 
 void tare_scale(void) {

@@ -166,5 +166,5 @@ void loop() {
     // Обработка команд
     process_serial_command();
     
-    delay(10);  // Небольшая задержка для стабильности
+    delay(1);  // Minimal delay to prevent CPU hogging
 }
