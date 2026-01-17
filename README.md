@@ -1,8 +1,8 @@
-# Robot Sensor Hub - Документация
+# Robot Sensor Hub - Документация v2.0
 
 ## 📋 Описание проекта
 
-**Robot Sensor Hub** - это интеллектуальная система на базе ESP32 для сбора данных с различных датчиков и управления устройствами через micro-ROS. Система предоставляет сырые данные и выполняет команды, а сложная логика управления реализуется на стороне ROS2.
+**Robot Sensor Hub** - это система на базе ESP32 для сбора данных с различных датчиков и управления устройствами. Проект использует **PlatformIO** и предоставляет простой Serial интерфейс для передачи данных и приёма команд.
 
 ## 🎯 Основная функциональность
 
@@ -15,61 +15,21 @@
   - Определение состояния вращения
 
 ### 🔧 Исполнение команд
-- Установка скорости вентиляторов по команде
+- Установка скорости вентиляторов по команде через Serial
 - Калибровка тензодатчика (тарирование) по команде
-- Пассивное ожидание управляющих команд от ROS2-нод
+- Простой текстовый протокол команд
 
 ### 📡 Коммуникация
-- **Micro-ROS** для полной интеграции с ROS2 экосистемой
-- **UART транспорт** для связи с micro-ROS агентом (вместо UDP)
-- Два основных топика:
-  - `device/snapshot` - публикация данных всех датчиков (1 Гц)
-  - `device/command` - подписка на команды управления
-
-### 🔌 UART Конфигурация
-Система использует **два независимых UART порта**:
-
-**UART0 (GPIO1/GPIO3)** - Консоль ESP32
-- Прошивка и отладка через USB-UART
-- Вывод логов ESP_LOG
+- **Serial UART** для передачи данных и команд
 - Скорость: 115200 baud
-
-**UART2 (GPIO27/GPIO26)** - micro-ROS Agent
-- Связь с micro-ROS Agent на компьютере
-- TX: GPIO 27
-- RX: GPIO 26  
-- Скорость: 115200 baud
-
-## 🏗️ Структура данных
-
-### Сообщение DeviceSnapshot
-```yaml
-devices: DeviceData[]  # Массив данных со всех активных устройств
-```
-
-### Сообщение DeviceData
-```yaml
-device_type: uint8    # 0=AHT30, 1=HX711, 2=FAN
-device_id: uint8      # ID устройства (0-7 для AHT30, 0 для HX711, 0-1 для FAN)
-data_type: uint8      # 1=temp, 2=humidity, 3=weight, 4=speed, 5=RPM
-value: float         # Значение измерения
-error_code: uint8    # Код ошибки (0=нет ошибки)
-```
-
-### Сообщение DeviceCommand
-```yaml
-device_type: uint8    # Тип целевого устройства
-device_id: uint8      # ID целевого устройства  
-command_code: uint8   # 0=set_speed, 1=tare_scale
-param_1: float       # Параметр (скорость для FAN: 0.0-1.0)
-param_2: float       # Запасной параметр
-```
+- JSON формат для данных датчиков
+- Простой CSV формат для команд
 
 ## ⚙️ Аппаратная конфигурация
 
 ### Обязательные компоненты
-- **ESP32** (с поддержкой WiFi/Ethernet)
-- **TCA9548A** - I2C мультиплексор (обязателен)
+- **ESP32** (с поддержкой Arduino framework)
+- **TCA9548A** - I2C мультиплексор
 - **1-8× датчиков AHT30** (подключаются к мультиплексору)
 - **1× тензодатчик HX711** 
 - **2× 4-пиновых вентилятора** (PWM + тахометр)
@@ -98,741 +58,357 @@ FAN0:
 FAN1:
   PWM → GPIO14  
   TACHO → GPIO16
-
-UART (micro-ROS):
-  TX → GPIO27 (к RX USB-UART конвертера)
-  RX → GPIO26 (к TX USB-UART конвертера)
-  GND → GND (общая земля обязательна!)
-
-UART0 (Console/Flash):
-  TX → GPIO1 (стандартный UART0)
-  RX → GPIO3 (стандартный UART0)
 ```
-
-**⚠️ Важно:** Требуется **два** USB-UART адаптера:
-- Один для консоли/прошивки (GPIO1/3)
-- Второй для micro-ROS Agent (GPIO27/26)
-
-## 🔧 Программная конфигурация
-
-### Обязательные настройки menuconfig
-```bash
-idf.py menuconfig
-```
-- **Micro-ROS → Transport** → WiFi или Ethernet
-- **Micro-ROS Agent IP/Port** → Адрес агента
-- **I2C Settings** → Проверить пины SDA/SCL
-- **GPIO Settings** → Настроить пины для HX711 и FAN
-
-### Особенности работы
-- Система автоматически определяет наличие датчиков AHT30
-- Поддерживается от 1 до 8 датчиков (гибкая конфигурация)
-- Отсутствующие датчики игнорируются (возвращают NaN)
-- Вентиляторы работают независимо с индивидуальным управлением
 
 ## 🚀 Быстрый старт
 
 ### Требования к окружению
-- **ESP-IDF v5.2+** (рекомендуется v5.5.1)
-- **Docker** (опционально, для изолированной сборки)
-- **ROS2 Humble** на хост-машине
-- **Два USB-UART адаптера** (один для прошивки, один для micro-ROS)
+- **PlatformIO** (VS Code extension или CLI)
+- **Python 3.6+** (для PlatformIO)
+- USB кабель для прошивки ESP32
 
----
+### Вариант 1: Через VS Code (рекомендуется)
 
-## 🏗️ Сборка проекта
+#### 1. Установка PlatformIO IDE
+1. Установите [VS Code](https://code.visualstudio.com/)
+2. Установите расширение **PlatformIO IDE** из marketplace
+3. Перезапустите VS Code
 
-### Вариант 1: Сборка через Docker (рекомендуется)
-
-Docker обеспечивает чистое окружение без конфликтов с хостовой системой ROS2.
-
-#### 1.1. Подготовка
+#### 2. Открытие проекта
 ```bash
-git clone --recursive https://github.com/krikz/robot_sensor_hub.git
+git clone https://github.com/krikz/robot_sensor_hub.git
 cd robot_sensor_hub
+code .
 ```
 
-#### 1.2. Запуск Docker-контейнера
+#### 3. Сборка и прошивка
+1. Откройте PlatformIO: нажмите на иконку "дома" в левой панели
+2. Выберите "Build" для сборки проекта
+3. Подключите ESP32 через USB
+4. Выберите "Upload" для прошивки
+5. Выберите "Monitor" для просмотра Serial выхода
+
+### Вариант 2: Через PlatformIO CLI
+
+#### 1. Установка PlatformIO Core
 ```bash
-cd docker
-docker-compose up -d
-docker exec -it robot_sensor_hub_builder bash
+# Установка через pip
+pip install -U platformio
+
+# Или через curl (Linux/Mac)
+curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py -o get-platformio.py
+python3 get-platformio.py
 ```
 
-#### 1.3. Сборка внутри контейнера
+#### 2. Клонирование и сборка
 ```bash
-cd /workspace/firmware
-source /opt/esp/idf/export.sh
+# Клонирование репозитория
+git clone https://github.com/krikz/robot_sensor_hub.git
+cd robot_sensor_hub
 
-# Чистая сборка
-idf.py fullclean
-idf.py build
+# Сборка проекта
+pio run
+
+# Прошивка ESP32
+pio run --target upload
+
+# Мониторинг Serial порта
+pio device monitor
 ```
-
-#### 1.4. Прошивка (из контейнера)
-```bash
-# Найдите порт на хост-машине
-idf.py -p /dev/ttyUSB0 flash monitor
-```
-
----
-
-### Вариант 2: Сборка на хост-машине
-
-**⚠️ Внимание:** При наличии ROS2 на хост-системе могут возникать конфликты переменных окружения!
-
-#### 2.1. Установка ESP-IDF
-```bash
-mkdir -p ~/esp
-cd ~/esp
-git clone -b v5.5.1 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf
-./install.sh esp32
-```
-
-#### 2.2. Клонирование проекта
-```bash
-cd ~
-git clone --recursive https://github.com/krikz/robot_sensor_hub.git
-cd robot_sensor_hub/firmware
-```
-
-#### 2.3. Сборка с изоляцией ROS2
-```bash
-# ВАЖНО: Отключаем переменные ROS2 перед сборкой
-cd ~/robot_sensor_hub/firmware
-source ~/esp/esp-idf/export.sh
-
-# Очистка конфликтующих переменных
-unset RMW_IMPLEMENTATION
-export RMW_IMPLEMENTATION=rmw_microxrcedds
-
-# Чистая сборка micro-ROS
-idf.py clean-microros
-idf.py build
-```
-
-#### 2.4. Прошивка
-```bash
-# Прошивка через UART0 (GPIO1/3)
-idf.py -p /dev/ttyUSB0 flash
-
-# Мониторинг логов
-idf.py -p /dev/ttyUSB0 monitor
-```
-
----
-
-## 🔧 Настройка проекта (menuconfig)
-
-### Изменение конфигурации UART для micro-ROS
-```bash
-idf.py menuconfig
-```
-
-Навигация:
-```
-→ micro-ROS Settings
-  → micro-ROS network interface select
-    ✓ Micro XRCE-DDS over UART
-  → UART Settings
-    → UART TX pin: 27
-    → UART RX pin: 26
-```
-
-### Другие важные настройки
-```
-→ Component config
-  → ESP System Settings
-    → Channel for console output
-      ✓ UART0 (default)
-```
-
----
-
-## 🖥️ Запуск micro-ROS Agent
-
-### На хост-машине (после прошивки ESP32)
-
-#### Через Docker (рекомендуется)
-```bash
-# Подключите второй USB-UART к GPIO27/26
-# Определите порт (обычно /dev/ttyUSB1 если ttyUSB0 занят консолью)
-
-docker run -it --rm \
-  -v /dev:/dev \
-  --privileged \
-  --net=host \
-  microros/micro-ros-agent:humble \
-  serial --dev /dev/ttyUSB1 -v6
-```
-
-#### Нативная установка
-```bash
-# Установка (если ещё не установлен)
-sudo apt install ros-humble-micro-ros-agent
-
-# Запуск
-ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB1 -v6
-```
-
-#### Проверка подключения
-```bash
-# В другом терминале
-ros2 topic list
-
-# Должны появиться топики:
-# /device/snapshot
-# /device/command
-# /parameter_events
-# /rosout
-```
-
----
-
-## 🔍 Диагностика и отладка
-
-### Проверка портов
-```bash
-# Список USB устройств
-ls -l /dev/ttyUSB*
-
-# Мониторинг консоли ESP32 (UART0 на GPIO1/3)
-idf.py -p /dev/ttyUSB0 monitor
-
-# Micro-ROS Agent должен быть на другом порту (UART2 на GPIO27/26)
-# Обычно это /dev/ttyUSB1
-```
-
-### Логи ESP32
-```bash
-# При подключении к консоли вы увидите:
-# [sensor_hub] Initializing i2cdev driver...
-# [sensor_hub] i2cdev driver initialized.
-# [sensor_hub] UART2 transport configured for micro-ROS (TX=27, RX=26)
-# [sensor_hub] micro-ROS node created
-```
-
-### Решение проблем
-
-**Проблема**: `RMW_IMPLEMENTATION` конфликт при сборке
-```bash
-# Решение: явно переопределить переменную
-unset RMW_IMPLEMENTATION
-export RMW_IMPLEMENTATION=rmw_microxrcedds
-idf.py clean-microros
-idf.py build
-```
-
-**Проблема**: Не определяются кастомные сообщения
-```bash
-# Решение: пересобрать micro-ROS с чистого листа
-cd firmware
-idf.py clean-microros
-rm -rf build
-idf.py build
-```
-
-**Проблема**: Agent не подключается
-- Проверьте правильность подключения UART2 (GPIO27/26)
-- Убедитесь что используете правильный порт (`/dev/ttyUSB1`)
-- Проверьте общую землю (GND) между ESP32 и USB-UART
-
----
 
 ## 📦 Структура проекта
 
 ```
 robot_sensor_hub/
-├── firmware/                          # Прошивка ESP32
-│   ├── main/
-│   │   ├── main.c                    # Основная логика
-│   │   ├── esp32_serial_transport.c  # UART транспорт для micro-ROS
-│   │   ├── esp32_serial_transport.h
-│   │   └── sensors/                  # Драйверы датчиков
-│   │       ├── aht30_reader.c        # AHT30 температура/влажность
-│   │       ├── hx711_reader.c        # HX711 тензодатчик
-│   │       └── fan_controller.c      # Управление вентиляторами
-│   ├── components/
-│   │   └── micro_ros_espidf_component/  # Компонент micro-ROS
-│   │       └── colcon.meta           # Конфигурация сборки (UART!)
-│   └── CMakeLists.txt
-├── robot_sensor_hub_msg/             # ROS2 сообщения
-│   └── msg/
-│       ├── DeviceData.msg
-│       ├── DeviceSnapshot.msg
-│       └── DeviceCommand.msg
-├── docker/                           # Docker окружение
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── cooling_controller.py             # Пример ROS2 контроллера
+├── platformio.ini              # Конфигурация PlatformIO
+├── src/                        # Исходный код прошивки
+│   ├── main.cpp               # Основная логика
+│   └── sensors/               # Драйверы датчиков
+│       ├── aht30_reader.h/cpp    # AHT30 температура/влажность
+│       ├── hx711_reader.h/cpp    # HX711 тензодатчик
+│       └── fan_controller.h/cpp  # Управление вентиляторами
 └── README.md
 ```
 
----
+## 🔧 Настройка проекта
 
-## 🔧 Технические детали
+### Изменение Serial порта
+Отредактируйте `platformio.ini`:
+```ini
+[env:esp32dev]
+upload_port = /dev/ttyUSB0  ; Для Linux/Mac
+; upload_port = COM3          ; Для Windows
+monitor_port = /dev/ttyUSB0
+```
 
-### Изменения транспорта (UDP → UART)
+### Изменение скорости Serial
+В `platformio.ini`:
+```ini
+monitor_speed = 115200  ; Измените на нужную скорость
+```
 
-**Было (старая версия):**
-- UDP транспорт через WiFi
-- Требовалась настройка сети
-- CONFIG_MICRO_ROS_AGENT_IP и PORT
+## 📡 Протокол обмена данными
 
-**Стало (текущая версия):**
-- UART транспорт через GPIO27/26
-- Не требуется настройка сети
-- Более стабильное соединение
-- Два независимых UART (консоль + micro-ROS)
-
-### Файлы конфигурации транспорта
-
-**firmware/components/micro_ros_espidf_component/colcon.meta:**
+### Формат данных (ESP32 → Компьютер)
+Данные передаются в JSON формате каждую секунду:
 ```json
 {
-    "names": {
-        "rmw_microxrcedds": {
-            "cmake-args": [
-                "-DRMW_UXRCE_TRANSPORT=custom"  // Вместо "udp"
-            ]
-        }
-    }
+  "devices": [
+    {"type":0,"id":0,"data_type":1,"value":25.30,"error":0},
+    {"type":0,"id":0,"data_type":2,"value":45.20,"error":0},
+    {"type":1,"id":0,"data_type":3,"value":123.45,"error":0},
+    {"type":2,"id":0,"data_type":4,"value":0.75,"error":0},
+    {"type":2,"id":0,"data_type":5,"value":1850,"error":0}
+  ]
 }
 ```
 
-**firmware/main/main.c:**
-```c
-// Использование UART2 вместо UART0
-static size_t uart_port = UART_NUM_2;
-rmw_uros_set_custom_transport(
-    true,
-    (void *) &uart_port,
-    esp32_serial_open,
-    esp32_serial_close,
-    esp32_serial_write,
-    esp32_serial_read
-);
+Где:
+- `type`: тип устройства (0=AHT30, 1=HX711, 2=FAN)
+- `id`: ID устройства
+- `data_type`: тип данных (1=temp, 2=humidity, 3=weight, 4=speed, 5=RPM)
+- `value`: значение
+- `error`: код ошибки (0 = нет ошибки)
+
+### Формат команд (Компьютер → ESP32)
+Команды отправляются в формате CSV через Serial:
+```
+TYPE,ID,COMMAND,PARAMETER
 ```
 
----
-
-## 🚀 Быстрый старт (краткая версия)
-
-### 1. Клонирование и настройка
-## 🚀 Быстрый старт (краткая версия)
-
-### 1. Сборка
+Примеры:
 ```bash
-git clone --recursive https://github.com/krikz/robot_sensor_hub.git
-cd robot_sensor_hub/firmware
+# Установить скорость вентилятора 0 на 75%
+2,0,0,0.75
 
-# Через Docker (рекомендуется)
-cd ../docker && docker-compose up -d
-docker exec -it robot_sensor_hub_builder bash
-cd /workspace/firmware && source /opt/esp/idf/export.sh
-idf.py build
+# Установить скорость вентилятора 1 на 50%
+2,1,0,0.50
 
-# Или на хосте
-source ~/esp/esp-idf/export.sh
-unset RMW_IMPLEMENTATION && export RMW_IMPLEMENTATION=rmw_microxrcedds
-idf.py build
+# Тарировать весы
+1,0,1,0
 ```
 
-### 2. Прошивка (через UART0 на GPIO1/3)
+Коды команд:
+- `0` - установить скорость вентилятора (для TYPE=2)
+- `1` - тарировать весы (для TYPE=1)
+
+## 🖥️ Использование
+
+### Просмотр данных через Serial Monitor
+
+#### VS Code + PlatformIO
+1. Нажмите на иконку "Serial Monitor" в нижней панели
+2. Данные будут отображаться каждую секунду
+
+#### PlatformIO CLI
 ```bash
-idf.py -p /dev/ttyUSB0 flash monitor
+pio device monitor
 ```
 
-### 3. Запуск micro-ROS Agent (через UART2 на GPIO27/26)
+#### Screen (Linux/Mac)
 ```bash
-# В отдельном терминале
-docker run -it --rm -v /dev:/dev --privileged --net=host \
-  microros/micro-ros-agent:humble serial --dev /dev/ttyUSB1 -v6
+screen /dev/ttyUSB0 115200
 ```
 
-### 4. Проверка
+#### Minicom (Linux)
 ```bash
-# Список топиков
-ros2 topic list
-
-# Просмотр данных
-ros2 topic echo /device/snapshot
+minicom -D /dev/ttyUSB0 -b 115200
 ```
 
----
+### Отправка команд
 
-## 🎛️ Управление системой
+#### Через Serial Monitor в VS Code/PlatformIO
+Введите команду в поле ввода и нажмите Enter:
+```
+2,0,0,0.75
+```
 
-### Ручное управление вентиляторами
+#### Через терминал (Linux/Mac)
 ```bash
-# Установка скорости вентилятора 0 на 75%
-ros2 topic pub /device/command robot_sensor_hub_msg/msg/DeviceCommand "
-device_type: 2
-device_id: 0  
-command_code: 0
-param_1: 0.75"
+echo "2,0,0,0.75" > /dev/ttyUSB0
 ```
 
-### Калибровка тензодатчика
-```bash
-# Тарирование весов
-ros2 topic pub /device/command robot_sensor_hub_msg/msg/DeviceCommand "
-device_type: 1
-device_id: 0
-command_code: 1"
-```
-
-### Мониторинг данных
-```bash
-# Просмотр всех данных
-ros2 topic echo /device/snapshot
-
-# Только температура
-ros2 topic echo /device/snapshot | grep "temperature"
-```
-
-## 🐍 Пример использования (Python ROS2 нода)
-
-Система предназначена для управления высокоуровневыми ROS2-нодами. Пример реализации ПИД-регулятора:
-
-### Запуск примера управления
-```bash
-python3 cooling_controller.py
-```
-
-### Принцип работы внешнего контроллера
-1. **Подписка** на топик `/device/snapshot` для получения данных
-2. **Анализ** температур с датчиков (вход/выход системы)
-3. **Расчет** управляющего воздействия по ПИД-алгоритму
-4. **Публикация** команд в топик `/device/command`
-
-### Конфигурация внешнего контроллера
+#### Через Python скрипт
 ```python
-# В cooling_controller.py
-SETPOINT_DELTA = -2.0    # Целевая разница температур (выход - вход)
-MIN_FAN_SPEED = 0.1      # Минимальная скорость вентилятора (10%)
-SAMPLE_TIME = 1.0        # Интервал обновления (1 секунда)
+import serial
+import time
+
+# Подключение к ESP32
+ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+time.sleep(2)
+
+# Установка скорости вентилятора
+ser.write(b'2,0,0,0.75\n')
+
+# Чтение данных
+while True:
+    if ser.in_waiting:
+        line = ser.readline().decode('utf-8').strip()
+        print(line)
 ```
 
-## 📊 Визуализация данных
+## 🐍 Пример Python скрипта для чтения данных
 
-Пример скрипта включает графический интерфейс для мониторинга:
+Создайте файл `read_sensors.py`:
 
-### Отображаемые параметры
-- Температура на входе и выходе системы
-- Разница температур (outlet - inlet)
-- Ошибка регулирования
-- Скорость вентилятора (PWM %)
-- RPM вентилятора (обороты/минуту)
+```python
+import serial
+import json
+import time
 
-## 🔧 Диагностика и устранение неисправностей
+def main():
+    # Подключение к ESP32
+    port = '/dev/ttyUSB0'  # Измените на ваш порт
+    baudrate = 115200
+    
+    print(f"Connecting to {port}...")
+    ser = serial.Serial(port, baudrate, timeout=1)
+    time.sleep(2)
+    
+    print("Reading sensor data...")
+    buffer = ""
+    
+    while True:
+        if ser.in_waiting:
+            data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+            buffer += data
+            
+            # Поиск полного JSON объекта
+            if '{' in buffer and '}' in buffer:
+                start = buffer.index('{')
+                end = buffer.index('}', start) + 1
+                json_str = buffer[start:end]
+                buffer = buffer[end:]
+                
+                try:
+                    data = json.loads(json_str)
+                    print(f"\n--- Sensor Snapshot ---")
+                    for device in data['devices']:
+                        print(f"Type: {device['type']}, ID: {device['id']}, "
+                              f"DataType: {device['data_type']}, Value: {device['value']}")
+                except json.JSONDecodeError:
+                    pass
 
-### Проверка подключения UART
+if __name__ == '__main__':
+    main()
+```
+
+Запуск:
 ```bash
-# Список всех USB-UART устройств
-ls -l /dev/ttyUSB*
-
-# Должно быть минимум 2 устройства:
-# /dev/ttyUSB0 - консоль ESP32 (GPIO1/3)
-# /dev/ttyUSB1 - micro-ROS Agent (GPIO27/26)
+python3 read_sensors.py
 ```
 
-### Мониторинг логов ESP32
-```bash
-# Подключение к консоли через UART0
-idf.py -p /dev/ttyUSB0 monitor
+## 🔍 Диагностика и отладка
 
-# При старте должны появиться сообщения:
-# [sensor_hub] Initializing i2cdev driver...
-# [sensor_hub] UART2 transport configured for micro-ROS (TX=27, RX=26)
-# [sensor_hub] micro-ROS node created
-```
+### Проблема: Датчики не определяются
 
-### Проверка связи с Agent
-```bash
-# Запуск Agent с подробными логами
-docker run -it --rm -v /dev:/dev --privileged --net=host \
-  microros/micro-ros-agent:humble serial --dev /dev/ttyUSB1 -v6
+**Проверка I2C устройств:**
+- Убедитесь в правильности подключения SDA (GPIO21) и SCL (GPIO22)
+- Проверьте питание 3.3V на всех устройствах
+- В Serial Monitor должны быть сообщения "[AHT30] Sensor found on channel X"
 
-# При успешном подключении увидите:
-# [1234567890.123456] info | UDPv4AgentLinux.cpp | recv_message | ...
-```
+### Проблема: Вентиляторы не вращаются
 
-### Частые проблемы
-
-#### 1. Датчики AHT30 не определяются
-```bash
-# Проверка I2C (из ESP32 monitor)
-# Должны появиться адреса 0x70 (TCA9548A) и 0x38 (AHT30)
-```
 **Решение:**
-- Проверить подключение TCA9548A к GPIO21/22
-- Проверить питание 3.3V на всех устройствах
-- Убедиться в правильной распайке каналов мультиплексора
+- Проверьте подключение PWM пинов (GPIO13, GPIO14)
+- Убедитесь что вентиляторы подключены к питанию (обычно 12V)
+- Отправьте команду установки скорости: `2,0,0,0.75`
+- Минимальная рабочая скорость обычно 10-20%
 
-#### 2. Ошибка сборки: "RMW_IMPLEMENTATION conflict"
-```bash
-# Проблема: Переменные окружения ROS2 конфликтуют с micro-ROS
-```
+### Проблема: Не удается прошить ESP32
+
 **Решение:**
-```bash
-cd firmware
-unset RMW_IMPLEMENTATION
-export RMW_IMPLEMENTATION=rmw_microxrcedds
-idf.py clean-microros
-idf.py build
+- Проверьте USB кабель (должен поддерживать передачу данных)
+- Убедитесь что выбран правильный порт в `platformio.ini`
+- Попробуйте нажать кнопку BOOT на ESP32 при прошивке
+- Проверьте драйверы USB-UART (CP2102, CH340 и т.д.)
+
+### Включение отладочных сообщений
+
+В `platformio.ini`:
+```ini
+build_flags = 
+    -DCORE_DEBUG_LEVEL=5  ; 0=None, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Verbose
 ```
 
-#### 3. Не определяются кастомные сообщения robot_sensor_hub_msg
-```bash
-# Проблема: libmicroros.a не содержит кастомные типы
-```
-**Решение:**
-```bash
-# Полная пересборка micro-ROS
-cd firmware
-idf.py clean-microros
-rm -rf build
-idf.py build
-```
+## 🛠️ Расширение функциональности
 
-#### 4. micro-ROS Agent не подключается
-```bash
-# Проблема: Нет связи по UART2
-```
-**Решение:**
-- Проверьте подключение GPIO27 (TX ESP32) → RX USB-UART
-- Проверьте подключение GPIO26 (RX ESP32) → TX USB-UART  
-- **ОБЯЗАТЕЛЬНО** соедините GND ESP32 и USB-UART
-- Убедитесь что используете правильный порт (обычно `/dev/ttyUSB1`)
-- Проверьте права доступа: `sudo chmod 666 /dev/ttyUSB1`
+### Добавление нового датчика
 
-#### 5. Вентиляторы не вращаются
-#### 5. Вентиляторы не вращаются
-```bash
-# Проблема: Нет PWM сигнала или неправильное подключение
-```
-**Решение:**
-- Проверить подключение PWM пинов (GPIO13 и GPIO14)
-- Убедиться что вентиляторы подключены к питанию (обычно 12V)
-- Убедиться в отправке команд управления через `/device/command`
-- Проверить что минимальная скорость > 0.1 (10%)
+1. Создайте файлы драйвера в `src/sensors/`:
+```cpp
+// new_sensor.h
+#pragma once
+void init_new_sensor();
+float read_new_sensor();
 
-#### 6. Сборка в Docker не работает
-```bash
-# Проблема: Не хватает прав или порты не проброшены
-```
-**Решение:**
-```bash
-# Добавить пользователя в группу docker
-sudo usermod -aG docker $USER
-# Перелогиниться
-
-# Пробросить USB устройства в контейнер
-docker run ... --device=/dev/ttyUSB0 --device=/dev/ttyUSB1 ...
+// new_sensor.cpp
+#include "new_sensor.h"
+void init_new_sensor() { /* ... */ }
+float read_new_sensor() { /* ... */ }
 ```
 
----
+2. Подключите в `main.cpp`:
+```cpp
+#include "sensors/new_sensor.h"
 
-## � Дополнительные ресурсы
+void setup() {
+    // ...
+    init_new_sensor();
+}
 
-### Документация
-- [ESP-IDF Programming Guide](https://docs.espressif.com/projects/esp-idf/en/latest/)
-- [micro-ROS Documentation](https://micro.ros.org/docs/overview/features/)
-- [ROS2 Humble Documentation](https://docs.ros.org/en/humble/)
-
-### Примеры кода
-- `cooling_controller.py` - Пример ПИД-регулятора на Python
-- `firmware/main/` - Примеры работы с датчиками и actuators
-
-### Инструменты отладки
-```bash
-# ROS2 утилиты
-ros2 topic list              # Список топиков
-ros2 topic echo /topic_name  # Просмотр сообщений
-ros2 topic hz /topic_name    # Частота публикации
-ros2 topic info /topic_name  # Информация о топике
-
-# ESP-IDF утилиты  
-idf.py monitor              # Мониторинг последовательного порта
-idf.py menuconfig           # Настройка проекта
-idf.py size                 # Размер прошивки
-idf.py app-flash            # Прошивка только приложения (быстрее)
+void loop() {
+    float value = read_new_sensor();
+    // Добавьте в publish_sensor_data()
+}
 ```
 
----
+### Добавление библиотеки
 
-## 🎓 Обучающие материалы
-
-### Архитектура системы
-```
-┌─────────────────────────────────────────────────┐
-│                  ROS2 Host PC                    │
-│  ┌───────────────────────────────────────────┐  │
-│  │   ROS2 Node (cooling_controller.py)       │  │
-│  │   - Подписка на /device/snapshot          │  │
-│  │   - ПИД-регулятор                         │  │
-│  │   - Публикация в /device/command          │  │
-│  └───────────────────────────────────────────┘  │
-│                       ↕                          │
-│  ┌───────────────────────────────────────────┐  │
-│  │      micro-ROS Agent (serial)             │  │
-│  │      /dev/ttyUSB1 (115200 baud)          │  │
-│  └───────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
-                        ↕
-              UART2 (GPIO27/26)
-                        ↕
-┌─────────────────────────────────────────────────┐
-│              ESP32 (Robot Sensor Hub)            │
-│  ┌───────────────────────────────────────────┐  │
-│  │   micro-ROS Client                        │  │
-│  │   - Publisher: /device/snapshot (1 Hz)    │  │
-│  │   - Subscriber: /device/command           │  │
-│  └───────────────────────────────────────────┘  │
-│  ┌───────────────────────────────────────────┐  │
-│  │   Sensor Drivers                          │  │
-│  │   - TCA9548A + 8× AHT30 (I2C)            │  │
-│  │   - HX711 (Weight sensor)                 │  │
-│  │   - 2× FANs (PWM + Tachometer)           │  │
-│  └───────────────────────────────────────────┘  │
-│                                                  │
-│  Console: UART0 (GPIO1/3) → /dev/ttyUSB0       │
-└─────────────────────────────────────────────────┘
+Отредактируйте `platformio.ini`:
+```ini
+lib_deps = 
+    adafruit/Adafruit AHTX0@^2.0.5
+    bogde/HX711@^0.7.5
+    your-library/YourLib@^1.0.0  ; Добавьте сюда
 ```
 
-### Рекомендуемый workflow
+## 📊 Технические характеристики
 
-1. **Разработка**
-   ```bash
-   # Редактирование кода
-   vim firmware/main/main.c
-   
-   # Сборка
-   cd firmware && idf.py build
-   
-   # Прошивка и мониторинг
-   idf.py -p /dev/ttyUSB0 flash monitor
-   ```
+- **Частота публикации данных:** 1 Гц (1 раз в секунду)
+- **Скорость Serial:** 115200 baud
+- **PWM частота вентиляторов:** 25 кГц
+- **PWM разрешение:** 8 бит (0-255)
+- **I2C частота:** 100 кГц (стандартный режим)
+- **Поддерживаемые датчики AHT30:** до 8 штук
 
-2. **Тестирование**
-   ```bash
-   # Терминал 1: Monitor ESP32
-   idf.py -p /dev/ttyUSB0 monitor
-   
-   # Терминал 2: micro-ROS Agent
-   docker run -it --rm -v /dev:/dev --privileged --net=host \
-     microros/micro-ros-agent:humble serial --dev /dev/ttyUSB1 -v6
-   
-   # Терминал 3: ROS2 команды
-   ros2 topic echo /device/snapshot
-   ```
+## 🔄 История версий
 
-3. **Отладка**
-   ```bash
-   # Добавление логов в код
-   ESP_LOGI(TAG, "Debug message: %d", value);
-   
-   # Просмотр логов
-   idf.py monitor
-   ```
+### v2.0 (Текущая версия) - PlatformIO
+- ✅ Переход на PlatformIO
+- ✅ Удаление зависимостей micro-ROS
+- ✅ Простой Serial интерфейс
+- ✅ JSON формат данных
+- ✅ CSV формат команд
+- ✅ Arduino framework
+- ✅ Упрощенная сборка и прошивка
 
----
+### v1.0 (Старая версия) - ESP-IDF + micro-ROS
+- ESP-IDF v5.5.1
+- micro-ROS интеграция
+- UART транспорт для micro-ROS
+- ROS2 топики
 
 ## 📝 Лицензия
 
-Проект использует лицензию Apache 2.0. Подробности в файле LICENSE.
+Проект использует лицензию Apache 2.0.
 
-## 🤝 Разработка и поддержка
+## 🤝 Контакты
 
-### История изменений
-
-**v2.0 (Текущая версия)**
-- ✅ Переход с UDP на UART транспорт для micro-ROS
-- ✅ Использование двух независимых UART портов
-- ✅ Улучшенная стабильность связи
-- ✅ Упрощенная конфигурация (не требуется настройка сети)
-- ✅ Поддержка ESP-IDF v5.5.1
-- ✅ Обновленная документация
-
-**v1.0 (Старая версия)**
-- UDP транспорт через WiFi
-- Единственный UART для консоли
-- ESP-IDF v5.1-5.2
-
-### Известные ограничения
-- Максимум 8 датчиков AHT30 (ограничение мультиплексора TCA9548A)
-- Требуется два USB-UART адаптера
-- Тахометр вентиляторов требует 4-pin PWM вентиляторы
-
-### Roadmap
-- [ ] Поддержка Ethernet транспорта (альтернатива UART)
-- [ ] Web-интерфейс для мониторинга
-- [ ] Поддержка дополнительных типов датчиков
-- [ ] OTA (Over-The-Air) обновления прошивки
-
-### Структура репозитория
-```
-robot_sensor_hub/
-├── firmware/                          # Прошивка ESP32
-│   ├── main/
-│   │   ├── main.c                    # Основная логика
-│   │   ├── esp32_serial_transport.c  # UART транспорт
-│   │   └── sensors/                  # Драйверы датчиков
-│   ├── components/
-│   │   └── micro_ros_espidf_component/
-│   │       └── colcon.meta           # Конфигурация UART
-│   └── sdkconfig                     # Настройки проекта
-├── robot_sensor_hub_msg/             # ROS2 сообщения
-│   └── msg/
-│       ├── DeviceData.msg
-│       ├── DeviceSnapshot.msg
-│       └── DeviceCommand.msg
-├── docker/                           # Docker окружение
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── cooling_controller.py             # Пример контроллера
-└── README.md
-```
-
-### Внесение изменений
-
-**Добавление нового датчика:**
-1. Создать драйвер в `firmware/main/sensors/new_sensor.c`
-2. Добавить заголовочный файл `new_sensor.h`
-3. Зарегистрировать в `main.c` (инициализация и чтение)
-4. Добавить новый `device_type` в сообщения
-5. Обновить документацию
-
-**Добавление новой команды:**
-1. Добавить `command_code` в `DeviceCommand.msg`
-2. Обработать в `command_callback()` в `main.c`
-3. Реализовать логику выполнения
-4. Обновить документацию и примеры
-
-**Процесс разработки:**
-```bash
-# Форк репозитория
-git clone https://github.com/your-username/robot_sensor_hub.git
-cd robot_sensor_hub
-
-# Создание ветки
-git checkout -b feature/new-sensor
-
-# Внесение изменений и тестирование
-cd firmware && idf.py build flash monitor
-
-# Коммит и push
-git add .
-git commit -m "Add new sensor driver"
-git push origin feature/new-sensor
-
-# Создание Pull Request на GitHub
-```
+GitHub: https://github.com/krikz/robot_sensor_hub
 
 ---
 
-*Последнее обновление: 18 октября 2025*  
-*Совместимость: ESP-IDF v5.5.1, ROS2 Humble, micro-ROS (UART transport)*  
+*Последнее обновление: январь 2026*  
+*Совместимость: PlatformIO, Arduino Framework, ESP32*  
 *Автор: krikz*
