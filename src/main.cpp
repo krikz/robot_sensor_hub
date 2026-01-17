@@ -1,170 +1,278 @@
 // src/main.cpp - Robot Sensor Hub firmware for PlatformIO
-// Прошивка для сбора данных с датчиков и управления устройствами
+// Request-response protocol for Raspberry Pi communication
 
 #include <Arduino.h>
 #include "sensors/aht30_reader.h"
 #include "sensors/hx711_reader.h"
 #include "sensors/fan_controller.h"
 
-// Константы типов устройств
+// Device types
 #define DEVICE_TYPE_AHT30 0
 #define DEVICE_TYPE_HX711 1
 #define DEVICE_TYPE_FAN   2
 
-// Константы типов данных
+// Data types
 #define DATA_TYPE_TEMPERATURE 1
 #define DATA_TYPE_HUMIDITY    2
 #define DATA_TYPE_WEIGHT      3
 #define DATA_TYPE_SPEED       4
 #define DATA_TYPE_RPM         5
 
-// Константы команд
-#define COMMAND_SET_SPEED     0
-#define COMMAND_TARE_SCALE    1
+// Request commands
+#define CMD_GET_SENSORS     0  // Get list of available sensors
+#define CMD_READ_SENSOR     1  // Read specific sensor data
+#define CMD_SET_FAN_SPEED   2  // Set fan speed
+#define CMD_TARE_SCALE      3  // Tare scale
+#define CMD_GET_ALL_DATA    4  // Get all sensor data
 
-// Интервал публикации данных (мс)
-#define PUBLISH_INTERVAL 1000
+// Response codes
+#define RESP_OK             0
+#define RESP_ERROR          1
+#define RESP_INVALID_CMD    2
+#define RESP_INVALID_PARAM  3
 
-// Глобальные переменные
-unsigned long last_publish_time = 0;
+// Send response in JSON format
+void send_response(uint8_t status, const char* message = NULL) {
+    Serial.print("{\"status\":");
+    Serial.print(status);
+    if (message) {
+        Serial.print(",\"message\":\"");
+        Serial.print(message);
+        Serial.print("\"");
+    }
+    Serial.println("}");
+}
 
-// Структура данных устройства
-struct DeviceData {
-    uint8_t device_type;
-    uint8_t device_id;
-    uint8_t data_type;
-    float value;
-    uint8_t error_code;
-};
+// CMD 0: Get list of available sensors and their state
+void cmd_get_sensors() {
+    Serial.println("{\"status\":0,\"sensors\":[");
+    
+    // Check AHT30 sensors
+    float temps[8], hums[8];
+    read_all_aht30(temps, hums);
+    bool first = true;
+    
+    for (int i = 0; i < 8; i++) {
+        if (!isnan(temps[i])) {
+            if (!first) Serial.println(",");
+            Serial.printf("  {\"type\":%d,\"id\":%d,\"name\":\"AHT30\",\"available\":true}", 
+                         DEVICE_TYPE_AHT30, i);
+            first = false;
+        }
+    }
+    
+    // Check HX711
+    float weight = read_weight();
+    if (!isnan(weight)) {
+        if (!first) Serial.println(",");
+        Serial.printf("  {\"type\":%d,\"id\":0,\"name\":\"HX711\",\"available\":true}", 
+                     DEVICE_TYPE_HX711);
+        first = false;
+    }
+    
+    // Fans are always available
+    for (int i = 0; i < 2; i++) {
+        if (!first) Serial.println(",");
+        Serial.printf("  {\"type\":%d,\"id\":%d,\"name\":\"FAN\",\"available\":true}", 
+                     DEVICE_TYPE_FAN, i);
+        first = false;
+    }
+    
+    Serial.println("\n]}");
+}
 
-// Функция для отправки данных в JSON формате
-void publish_sensor_data() {
+// CMD 1: Read specific sensor data
+void cmd_read_sensor(uint8_t device_type, uint8_t device_id) {
+    if (device_type == DEVICE_TYPE_AHT30) {
+        if (device_id < 8) {
+            float temps[8], hums[8];
+            read_all_aht30(temps, hums);
+            
+            if (!isnan(temps[device_id])) {
+                Serial.printf("{\"status\":0,\"type\":%d,\"id\":%d,\"data\":[", 
+                             device_type, device_id);
+                Serial.printf("{\"data_type\":%d,\"value\":%.2f},", 
+                             DATA_TYPE_TEMPERATURE, temps[device_id]);
+                Serial.printf("{\"data_type\":%d,\"value\":%.2f}", 
+                             DATA_TYPE_HUMIDITY, hums[device_id]);
+                Serial.println("]}");
+            } else {
+                send_response(RESP_ERROR, "Sensor not available");
+            }
+        } else {
+            send_response(RESP_INVALID_PARAM, "Invalid device_id");
+        }
+    } else if (device_type == DEVICE_TYPE_HX711) {
+        float weight = read_weight();
+        if (!isnan(weight)) {
+            Serial.printf("{\"status\":0,\"type\":%d,\"id\":0,\"data\":[", device_type);
+            Serial.printf("{\"data_type\":%d,\"value\":%.2f}", DATA_TYPE_WEIGHT, weight);
+            Serial.println("]}");
+        } else {
+            send_response(RESP_ERROR, "Sensor not available");
+        }
+    } else if (device_type == DEVICE_TYPE_FAN) {
+        if (device_id < 2) {
+            float speed = get_fan_speed(device_id);
+            uint32_t rpm = get_fan_rpm(device_id);
+            
+            Serial.printf("{\"status\":0,\"type\":%d,\"id\":%d,\"data\":[", 
+                         device_type, device_id);
+            Serial.printf("{\"data_type\":%d,\"value\":%.2f},", DATA_TYPE_SPEED, speed);
+            Serial.printf("{\"data_type\":%d,\"value\":%u}", DATA_TYPE_RPM, rpm);
+            Serial.println("]}");
+        } else {
+            send_response(RESP_INVALID_PARAM, "Invalid device_id");
+        }
+    } else {
+        send_response(RESP_INVALID_PARAM, "Invalid device_type");
+    }
+}
+
+// CMD 2: Set fan speed
+void cmd_set_fan_speed(uint8_t fan_id, float speed) {
+    if (fan_id < 2) {
+        if (speed >= 0.0f && speed <= 1.0f) {
+            set_fan_speed(fan_id, speed);
+            send_response(RESP_OK, "Fan speed set");
+        } else {
+            send_response(RESP_INVALID_PARAM, "Speed must be 0.0-1.0");
+        }
+    } else {
+        send_response(RESP_INVALID_PARAM, "Invalid fan_id");
+    }
+}
+
+// CMD 3: Tare scale
+void cmd_tare_scale() {
+    tare_scale();
+    send_response(RESP_OK, "Scale tared");
+}
+
+// CMD 4: Get all sensor data
+void cmd_get_all_data() {
     float temps[8], hums[8];
     read_all_aht30(temps, hums);
     float weight = read_weight();
     
-    // Начало JSON объекта
-    Serial.println("{");
-    Serial.println("  \"devices\": [");
-    
+    Serial.println("{\"status\":0,\"data\":[");
     bool first = true;
     
-    // Данные с AHT30
+    // AHT30 sensors
     for (int i = 0; i < 8; i++) {
         if (!isnan(temps[i])) {
             if (!first) Serial.println(",");
-            Serial.printf("    {\"type\":%d,\"id\":%d,\"data_type\":%d,\"value\":%.2f,\"error\":0}", 
-                         DEVICE_TYPE_AHT30, i, DATA_TYPE_TEMPERATURE, temps[i]);
+            Serial.printf("  {\"type\":%d,\"id\":%d,\"values\":[", DEVICE_TYPE_AHT30, i);
+            Serial.printf("{\"data_type\":%d,\"value\":%.2f},", DATA_TYPE_TEMPERATURE, temps[i]);
+            Serial.printf("{\"data_type\":%d,\"value\":%.2f}", DATA_TYPE_HUMIDITY, hums[i]);
+            Serial.print("]}");
             first = false;
-            
-            Serial.println(",");
-            Serial.printf("    {\"type\":%d,\"id\":%d,\"data_type\":%d,\"value\":%.2f,\"error\":0}", 
-                         DEVICE_TYPE_AHT30, i, DATA_TYPE_HUMIDITY, hums[i]);
         }
     }
     
-    // Данные с HX711
+    // HX711
     if (!isnan(weight)) {
         if (!first) Serial.println(",");
-        Serial.printf("    {\"type\":%d,\"id\":0,\"data_type\":%d,\"value\":%.2f,\"error\":0}", 
-                     DEVICE_TYPE_HX711, DATA_TYPE_WEIGHT, weight);
+        Serial.printf("  {\"type\":%d,\"id\":0,\"values\":[", DEVICE_TYPE_HX711);
+        Serial.printf("{\"data_type\":%d,\"value\":%.2f}", DATA_TYPE_WEIGHT, weight);
+        Serial.print("]}");
         first = false;
     }
     
-    // Данные с вентиляторов
+    // Fans
     for (int i = 0; i < 2; i++) {
         if (!first) Serial.println(",");
-        Serial.printf("    {\"type\":%d,\"id\":%d,\"data_type\":%d,\"value\":%.2f,\"error\":0}", 
-                     DEVICE_TYPE_FAN, i, DATA_TYPE_SPEED, get_fan_speed(i));
-        
-        Serial.println(",");
-        Serial.printf("    {\"type\":%d,\"id\":%d,\"data_type\":%d,\"value\":%u,\"error\":0}", 
-                     DEVICE_TYPE_FAN, i, DATA_TYPE_RPM, get_fan_rpm(i));
+        Serial.printf("  {\"type\":%d,\"id\":%d,\"values\":[", DEVICE_TYPE_FAN, i);
+        Serial.printf("{\"data_type\":%d,\"value\":%.2f},", DATA_TYPE_SPEED, get_fan_speed(i));
+        Serial.printf("{\"data_type\":%d,\"value\":%u}", DATA_TYPE_RPM, get_fan_rpm(i));
+        Serial.print("]}");
         first = false;
     }
     
-    Serial.println();
-    Serial.println("  ]");
-    Serial.println("}");
+    Serial.println("\n]}");
 }
 
-// Функция обработки команд через Serial
-void process_serial_command() {
+// Process incoming requests
+void process_request() {
     if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
+        String request = Serial.readStringUntil('\n');
+        request.trim();
         
-        // Формат команды: TYPE,ID,COMMAND,PARAM
-        // Например: 2,0,0,0.75 - установить скорость вентилятора 0 на 75%
+        // Request format: CMD,PARAM1,PARAM2,...
+        int firstComma = request.indexOf(',');
         
-        int firstComma = command.indexOf(',');
-        int secondComma = command.indexOf(',', firstComma + 1);
-        int thirdComma = command.indexOf(',', secondComma + 1);
-        
-        if (firstComma > 0 && secondComma > 0 && thirdComma > 0) {
-            uint8_t device_type = command.substring(0, firstComma).toInt();
-            uint8_t device_id = command.substring(firstComma + 1, secondComma).toInt();
-            uint8_t cmd = command.substring(secondComma + 1, thirdComma).toInt();
-            float param = command.substring(thirdComma + 1).toFloat();
+        if (firstComma < 0) {
+            // Single command without parameters
+            uint8_t cmd = request.toInt();
             
-            Serial.printf("[CMD] Received: type=%d, id=%d, cmd=%d, param=%.2f\n", 
-                         device_type, device_id, cmd, param);
+            switch (cmd) {
+                case CMD_GET_SENSORS:
+                    cmd_get_sensors();
+                    break;
+                case CMD_GET_ALL_DATA:
+                    cmd_get_all_data();
+                    break;
+                default:
+                    send_response(RESP_INVALID_CMD, "Unknown command");
+                    break;
+            }
+        } else {
+            // Command with parameters
+            uint8_t cmd = request.substring(0, firstComma).toInt();
+            String params = request.substring(firstComma + 1);
             
-            // Обработка команд
-            if (device_type == DEVICE_TYPE_FAN && cmd == COMMAND_SET_SPEED) {
-                if (device_id < 2) {
-                    set_fan_speed(device_id, param);
-                    Serial.printf("[CMD] Fan %d speed set to %.2f\n", device_id, param);
+            int secondComma = params.indexOf(',');
+            
+            switch (cmd) {
+                case CMD_READ_SENSOR: {
+                    if (secondComma > 0) {
+                        uint8_t device_type = params.substring(0, secondComma).toInt();
+                        uint8_t device_id = params.substring(secondComma + 1).toInt();
+                        cmd_read_sensor(device_type, device_id);
+                    } else {
+                        send_response(RESP_INVALID_PARAM, "Missing parameters");
+                    }
+                    break;
                 }
-            } else if (device_type == DEVICE_TYPE_HX711 && cmd == COMMAND_TARE_SCALE) {
-                tare_scale();
-                Serial.println("[CMD] Scale tared");
-            } else {
-                Serial.println("[CMD] Unknown command");
+                case CMD_SET_FAN_SPEED: {
+                    if (secondComma > 0) {
+                        uint8_t fan_id = params.substring(0, secondComma).toInt();
+                        float speed = params.substring(secondComma + 1).toFloat();
+                        cmd_set_fan_speed(fan_id, speed);
+                    } else {
+                        send_response(RESP_INVALID_PARAM, "Missing parameters");
+                    }
+                    break;
+                }
+                case CMD_TARE_SCALE:
+                    cmd_tare_scale();
+                    break;
+                default:
+                    send_response(RESP_INVALID_CMD, "Unknown command");
+                    break;
             }
         }
     }
 }
 
 void setup() {
-    // Инициализация Serial
+    // Initialize Serial
     Serial.begin(115200);
     delay(1000);
     
-    Serial.println();
-    Serial.println("=================================");
-    Serial.println("  Robot Sensor Hub v2.0");
-    Serial.println("  PlatformIO / Arduino Framework");
-    Serial.println("=================================");
-    Serial.println();
+    Serial.println("{\"status\":0,\"message\":\"Robot Sensor Hub v2.1 - Request-Response Protocol\"}");
     
-    // Инициализация датчиков
-    Serial.println("[INIT] Initializing sensors...");
+    // Initialize sensors
     init_aht30_sensors();
     init_hx711();
     init_fan_controller();
     
-    Serial.println("[INIT] Initialization complete!");
-    Serial.println();
-    Serial.println("Command format: TYPE,ID,CMD,PARAM");
-    Serial.println("  Set fan speed: 2,0,0,0.75 (fan 0, 75%)");
-    Serial.println("  Tare scale: 1,0,1,0");
-    Serial.println();
-    
-    last_publish_time = millis();
+    Serial.println("{\"status\":0,\"message\":\"Initialization complete, ready for requests\"}");
 }
 
 void loop() {
-    unsigned long current_time = millis();
-    
-    // Публикация данных с датчиков
-    if (current_time - last_publish_time >= PUBLISH_INTERVAL) {
-        publish_sensor_data();
-        last_publish_time = current_time;
-    }
-    
-    // Обработка команд
-    process_serial_command();
+    // Process incoming requests
+    process_request();
     
     delay(1);  // Minimal delay to prevent CPU hogging
 }
