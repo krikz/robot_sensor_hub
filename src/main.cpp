@@ -2,6 +2,7 @@
 // Request-response protocol for Raspberry Pi communication
 
 #include <Arduino.h>
+#include "target.h"
 #include "sensors/aht30_reader.h"
 #include "sensors/hx711_reader.h"
 #include "sensors/fan_controller.h"
@@ -257,10 +258,10 @@ void process_request() {
 
 void setup() {
     // Initialize Serial
-    Serial.begin(115200);
+    Serial.begin(SERIAL_BAUD);
     delay(1000);
     
-    Serial.println("{\"status\":0,\"message\":\"Robot Sensor Hub v2.1 - Request-Response Protocol\"}");
+    Serial.printf("{\"status\":0,\"message\":\"Robot Sensor Hub v2.1 - Target: %s\"}\n", TARGET_NAME);
     
     // Initialize sensors
     init_aht30_sensors();

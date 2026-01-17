@@ -1,17 +1,6 @@
 // src/sensors/fan_controller.cpp
 #include "fan_controller.h"
-
-// Конфигурация GPIO
-#define FAN1_PIN 13  // PWM для первого вентилятора
-#define FAN2_PIN 14  // PWM для второго вентилятора
-#define TACHO1_PIN 15  // Тахометр первого вентилятора
-#define TACHO2_PIN 16  // Тахометр второго вентилятора
-
-// PWM настройки
-#define PWM_FREQ 25000  // 25 кГц (стандарт для вентиляторов)
-#define PWM_RESOLUTION 8  // 8-бит разрешение (0-255)
-#define PWM_CHANNEL_FAN1 0
-#define PWM_CHANNEL_FAN2 1
+#include "../target.h"
 
 // Тахометр
 #define PULSES_PER_REVOLUTION 2
@@ -23,61 +12,70 @@ static uint32_t last_rpm[2] = {0, 0};
 static unsigned long last_measurement_time[2] = {0, 0};
 static float fan_speeds[2] = {0.0f, 0.0f};
 
+// Fan pin configuration from target
+static const uint8_t fan_pwm_pins[2] = {FAN0_PWM_PIN, FAN1_PWM_PIN};
+static const uint8_t fan_tacho_pins[2] = {FAN0_TACHO_PIN, FAN1_TACHO_PIN};
+
 // Обработчики прерываний для тахометров
-void IRAM_ATTR tacho1_isr() {
+void IRAM_ATTR tacho0_isr() {
     pulse_count[0]++;
 }
 
-void IRAM_ATTR tacho2_isr() {
+void IRAM_ATTR tacho1_isr() {
     pulse_count[1]++;
 }
 
 void init_fan_controller(void) {
-    Serial.println("[FAN] Initializing fan controller...");
+    Serial.printf("[FAN] Initializing %d fan(s) with target: %s\n", NUM_FANS, TARGET_NAME);
     
-    // Настройка PWM для обоих вентиляторов
-    ledcSetup(PWM_CHANNEL_FAN1, PWM_FREQ, PWM_RESOLUTION);
-    ledcAttachPin(FAN1_PIN, PWM_CHANNEL_FAN1);
-    ledcWrite(PWM_CHANNEL_FAN1, 0);
+    // Настройка PWM для вентиляторов
+    for (int i = 0; i < NUM_FANS; i++) {
+        Serial.printf("[FAN] Fan %d: PWM pin=%d, TACHO pin=%d\n", i, fan_pwm_pins[i], fan_tacho_pins[i]);
+        
+        ledcSetup(i, FAN_PWM_FREQ, FAN_PWM_RESOLUTION);
+        ledcAttachPin(fan_pwm_pins[i], i);
+        ledcWrite(i, 0);
+        
+        // Настройка тахометра
+        pinMode(fan_tacho_pins[i], INPUT_PULLUP);
+        
+        // Инициализация времени измерения
+        last_measurement_time[i] = millis();
+    }
     
-    ledcSetup(PWM_CHANNEL_FAN2, PWM_FREQ, PWM_RESOLUTION);
-    ledcAttachPin(FAN2_PIN, PWM_CHANNEL_FAN2);
-    ledcWrite(PWM_CHANNEL_FAN2, 0);
-    
-    // Настройка тахометров
-    pinMode(TACHO1_PIN, INPUT_PULLUP);
-    pinMode(TACHO2_PIN, INPUT_PULLUP);
-    
-    attachInterrupt(digitalPinToInterrupt(TACHO1_PIN), tacho1_isr, RISING);
-    attachInterrupt(digitalPinToInterrupt(TACHO2_PIN), tacho2_isr, RISING);
-    
-    // Инициализация времени измерения
-    last_measurement_time[0] = millis();
-    last_measurement_time[1] = millis();
+    // Attach interrupts for tachometers
+    if (NUM_FANS >= 1) {
+        attachInterrupt(digitalPinToInterrupt(fan_tacho_pins[0]), tacho0_isr, RISING);
+    }
+    if (NUM_FANS >= 2) {
+        attachInterrupt(digitalPinToInterrupt(fan_tacho_pins[1]), tacho1_isr, RISING);
+    }
     
     Serial.println("[FAN] Fan controller initialized");
 }
 
 void set_fan_speed(int fan_id, float speed) {
-    if (fan_id < 0 || fan_id > 1) return;
+    if (fan_id < 0 || fan_id >= NUM_FANS) {
+        Serial.printf("[FAN] ERROR: Invalid fan_id %d (max %d)\n", fan_id, NUM_FANS-1);
+        return;
+    }
     
     // Ограничение скорости 0.0-1.0
     if (speed < 0.0f) speed = 0.0f;
     if (speed > 1.0f) speed = 1.0f;
     
     // Преобразование в PWM duty cycle (0-255)
-    uint32_t duty = (uint32_t)(255 * speed);
+    uint32_t duty = (uint32_t)((1 << FAN_PWM_RESOLUTION) - 1) * speed;
     
     // Установка PWM
-    uint8_t channel = (fan_id == 0) ? PWM_CHANNEL_FAN1 : PWM_CHANNEL_FAN2;
-    ledcWrite(channel, duty);
+    ledcWrite(fan_id, duty);
     
     fan_speeds[fan_id] = speed;
     Serial.printf("[FAN] Fan %d speed set to %.2f%% (duty=%d)\n", fan_id, speed * 100, duty);
 }
 
 float get_fan_speed(int fan_id) {
-    if (fan_id < 0 || fan_id > 1) {
+    if (fan_id < 0 || fan_id >= NUM_FANS) {
         Serial.printf("[FAN] ERROR: Invalid fan_id %d\n", fan_id);
         return NAN;  // Use NAN to indicate invalid input
     }
@@ -85,7 +83,7 @@ float get_fan_speed(int fan_id) {
 }
 
 uint32_t get_fan_rpm(int fan_id) {
-    if (fan_id < 0 || fan_id > 1) return 0;
+    if (fan_id < 0 || fan_id >= NUM_FANS) return 0;
     
     unsigned long current_time = millis();
     
@@ -105,6 +103,6 @@ uint32_t get_fan_rpm(int fan_id) {
 }
 
 bool is_fan_rotating(int fan_id) {
-    if (fan_id < 0 || fan_id > 1) return false;
+    if (fan_id < 0 || fan_id >= NUM_FANS) return false;
     return get_fan_rpm(fan_id) > 0;
 }

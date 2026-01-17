@@ -1,12 +1,20 @@
 // src/sensors/aht30_reader.cpp
 #include "aht30_reader.h"
+#include "../target.h"
 #include <Wire.h>
 #include <Adafruit_AHTX0.h>
 
-// Конфигурация I2C
-#define I2C_SDA 21
-#define I2C_SCL 22
-#define TCA9548_ADDR 0x70
+// Array to check which channels should be scanned
+static const bool channel_enabled[8] = {
+    AHT30_CHANNEL_0,
+    AHT30_CHANNEL_1,
+    AHT30_CHANNEL_2,
+    AHT30_CHANNEL_3,
+    AHT30_CHANNEL_4,
+    AHT30_CHANNEL_5,
+    AHT30_CHANNEL_6,
+    AHT30_CHANNEL_7
+};
 
 // Массив датчиков AHT30 (по одному на канал мультиплексора)
 static Adafruit_AHTX0 aht30_sensors[8];
@@ -15,28 +23,34 @@ static bool sensor_present[8] = {false};
 // Функция для выбора канала на TCA9548A
 void tca_select(uint8_t channel) {
     if (channel > 7) return;
-    Wire.beginTransmission(TCA9548_ADDR);
+    Wire.beginTransmission(TCA9548A_ADDRESS);
     Wire.write(1 << channel);
     Wire.endTransmission();
 }
 
 void init_aht30_sensors(void) {
-    Serial.println("[AHT30] Initializing TCA9548A and AHT30 sensors...");
+    Serial.printf("[AHT30] Initializing with target: %s\n", TARGET_NAME);
     
+#if USE_TCA9548A
     // Инициализация I2C
-    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ);
     delay(100);
     
     // Проверка наличия TCA9548A
-    Wire.beginTransmission(TCA9548_ADDR);
+    Wire.beginTransmission(TCA9548A_ADDRESS);
     if (Wire.endTransmission() != 0) {
         Serial.println("[AHT30] ERROR: TCA9548A not found!");
         return;
     }
-    Serial.println("[AHT30] TCA9548A found");
+    Serial.printf("[AHT30] TCA9548A found at 0x%02X\n", TCA9548A_ADDRESS);
     
-    // Инициализация датчиков на каждом канале
+    // Инициализация датчиков только на разрешенных каналах
     for (int channel = 0; channel < 8; channel++) {
+        if (!channel_enabled[channel]) {
+            Serial.printf("[AHT30] Channel %d disabled in target config\n", channel);
+            continue;
+        }
+        
         tca_select(channel);
         delay(10);
         
@@ -50,19 +64,24 @@ void init_aht30_sensors(void) {
     }
     
     // Сброс мультиплексора
-    Wire.beginTransmission(TCA9548_ADDR);
+    Wire.beginTransmission(TCA9548A_ADDRESS);
     Wire.write(0);
     Wire.endTransmission();
     
     Serial.println("[AHT30] Initialization complete");
+#else
+    Serial.println("[AHT30] TCA9548A disabled in target config");
+#endif
 }
 
 void read_all_aht30(float *temps, float *hums) {
+#if USE_TCA9548A
     for (int channel = 0; channel < 8; channel++) {
         temps[channel] = NAN;
         hums[channel] = NAN;
         
-        if (!sensor_present[channel]) continue;
+        // Skip if channel not enabled in config or sensor not present
+        if (!channel_enabled[channel] || !sensor_present[channel]) continue;
         
         tca_select(channel);
         delay(5);
@@ -77,7 +96,14 @@ void read_all_aht30(float *temps, float *hums) {
     }
     
     // Сброс мультиплексора
-    Wire.beginTransmission(TCA9548_ADDR);
+    Wire.beginTransmission(TCA9548A_ADDRESS);
     Wire.write(0);
     Wire.endTransmission();
+#else
+    // No multiplexer configured
+    for (int channel = 0; channel < 8; channel++) {
+        temps[channel] = NAN;
+        hums[channel] = NAN;
+    }
+#endif
 }

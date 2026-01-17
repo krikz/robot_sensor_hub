@@ -9,9 +9,54 @@
 - 8× AHT30 датчиков (температура/влажность через TCA9548A)
 - 1× HX711 (вес)
 - 2× вентилятора (PWM + тахометр)
+- **Конфигурация через targets** (как в ELRS)
 - Request-response протокол через Serial
 - Python клиент для Raspberry Pi
 - Готово для интеграции с ROS
+
+## 🎨 Система Targets
+
+Targets позволяют настроить какие датчики и на каких портах используются.
+
+### Доступные targets:
+
+**`default`** - 2 AHT30 + HX711 + 2 вентилятора
+```bash
+pio run -e default -t upload
+```
+
+**`full`** - 8 AHT30 + HX711 + 2 вентилятора
+```bash
+pio run -e full -t upload
+```
+
+### Создание своего target:
+
+1. Скопируйте `src/targets/default.h` в `src/targets/my_config.h`
+2. Измените настройки:
+```c
+// Включить/выключить AHT30 на каналах
+#define AHT30_CHANNEL_0 1  // 1=включен, 0=выключен
+#define AHT30_CHANNEL_1 0
+...
+
+// Изменить GPIO пины
+#define FAN0_PWM_PIN 25
+#define HX711_DOUT_PIN 4
+```
+
+3. Добавьте в `platformio.ini`:
+```ini
+[env:my_config]
+platform = ${common.platform}
+board = ${common.board}
+framework = ${common.framework}
+build_flags = -DUSE_TARGET_my_config
+```
+
+4. Прошивка: `pio run -e my_config -t upload`
+
+См. `src/targets/README.md` для деталей.
 
 ## 📡 Протокол
 
@@ -37,7 +82,7 @@ JSON формат:
 
 Типы данных: 1=Temp(°C), 2=Humidity(%), 3=Weight(g), 4=Speed, 5=RPM
 
-## 🔌 Подключение
+## 🔌 Подключение (по умолчанию)
 
 ```
 I2C: SDA→GPIO21, SCL→GPIO22
@@ -46,13 +91,22 @@ FAN0: PWM→GPIO13, TACHO→GPIO15
 FAN1: PWM→GPIO14, TACHO→GPIO16
 ```
 
+*Пины настраиваются в target файлах*
+
 ## 🚀 Быстрый старт
 
 ```bash
 pip install platformio
 git clone https://github.com/krikz/robot_sensor_hub.git
 cd robot_sensor_hub
-pio run -t upload
+
+# Прошивка с default конфигурацией
+pio run -e default -t upload
+
+# Или с full конфигурацией (все 8 датчиков)
+pio run -e full -t upload
+
+# Python клиент
 python3 sensor_client.py /dev/ttyUSB0
 ```
 
@@ -91,20 +145,26 @@ class SensorHubNode(Node):
 
 ```
 robot_sensor_hub/
-├── platformio.ini
-├── src/main.cpp              # Request-response protocol
-├── src/sensors/              # AHT30, HX711, Fan drivers
-└── sensor_client.py          # Python client for RPi
+├── platformio.ini          # Конфигурация targets
+├── src/
+│   ├── target.h           # Выбор target
+│   ├── targets/           # Target конфигурации
+│   │   ├── default.h      # Стандартная
+│   │   ├── full_config.h  # Полная
+│   │   └── README.md      # Документация
+│   ├── main.cpp           # Request-response protocol
+│   └── sensors/           # Драйверы (используют target.h)
+└── sensor_client.py       # Python client для RPi
 ```
 
 ## 🔧 Troubleshooting
 
-- **Датчики не находятся**: I2C GPIO21/22, 3.3V
-- **Вентиляторы не работают**: PWM GPIO13/14, 12V
+- **Датчики не находятся**: Проверьте target config и I2C GPIO
+- **Вентиляторы не работают**: Проверьте PWM GPIO в target
 - **Permission denied**: `sudo usermod -a -G dialout $USER`
 
 ---
 
-**v2.1** - Request-response | **v2.0** - PlatformIO | **v1.0** - ESP-IDF+ROS
+**v2.1** - Targets + Request-response | **v2.0** - PlatformIO | **v1.0** - ESP-IDF+ROS
 
 *Автор: krikz | Apache 2.0*
