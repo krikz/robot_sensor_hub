@@ -1,46 +1,34 @@
-# Архивные файлы / Archived Files
+# Архив / Archive
 
-Эта директория содержит файлы из старой версии проекта (v1.0), которая использовала ESP-IDF и micro-ROS.
+Эта папка содержала файлы старых версий проекта.
 
-This directory contains files from the old version of the project (v1.0) that used ESP-IDF and micro-ROS.
+## Удалённые файлы
 
-## Устаревшие компоненты / Deprecated Components
+### v1.0 (ESP-IDF + micro-ROS)
+- `firmware/` - ESP-IDF прошивка с micro-ROS
+- `docker/` - Docker окружение для сборки
+- `robot_sensor_hub_msg/` - ROS2 message definitions
+- `cooling_controller.py` - ROS2 контроллер
+- `run_docker.sh` - Docker helper
 
-- `firmware/` - Старая прошивка на ESP-IDF с micro-ROS
-- `robot_sensor_hub_msg/` - ROS2 сообщения для micro-ROS
-- `docker/` - Docker окружение для сборки ESP-IDF
-- `cooling_controller.py` - ROS2 контроллер (требует micro-ROS)
-- `run_docker.sh` - Скрипт запуска Docker
-- `tools/` - Утилиты для старой версии
+### v2.0 (PlatformIO - старый протокол)
+- `read_sensors.py` - Continuous push reader
+- `send_command.py` - Old command sender
 
-## Новая версия / New Version
+## Текущая версия: v2.1
 
-Текущая версия проекта (v2.0) использует:
-- **PlatformIO** вместо ESP-IDF
-- **Arduino Framework** вместо ESP-IDF FreeRTOS
-- **Serial UART** вместо micro-ROS
-- **JSON/CSV протокол** вместо ROS2 топиков
+- **Request-response протокол** вместо continuous push
+- **sensor_client.py** для Raspberry Pi + ROS
+- Нет зависимостей от ROS/Docker
 
-The current version (v2.0) uses:
-- **PlatformIO** instead of ESP-IDF
-- **Arduino Framework** instead of ESP-IDF FreeRTOS
-- **Serial UART** instead of micro-ROS
-- **JSON/CSV protocol** instead of ROS2 topics
+## История
 
-## Миграция / Migration
+| Версия | Особенности |
+|--------|-------------|
+| v1.0 | ESP-IDF + micro-ROS + Docker |
+| v2.0 | PlatformIO + continuous push |
+| v2.1 | PlatformIO + request-response |
 
-Если вы хотите использовать старую версию с micro-ROS, переключитесь на тег v1.0:
+---
 
-If you want to use the old version with micro-ROS, switch to tag v1.0:
-
-```bash
-git checkout v1.0
-```
-
-Или обратитесь к старому README:
-
-Or refer to the old README:
-
-```bash
-cat README_OLD.md
-```
+Для использования старой версии: `git checkout v1.0`

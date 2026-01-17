@@ -1,173 +1,86 @@
 # Быстрый старт / Quick Start Guide
 
-## 🚀 Установка и запуск за 5 минут
+## 🚀 За 5 минут
 
-### Шаг 1: Установка PlatformIO
-
-**Вариант А: VS Code (рекомендуется)**
-1. Скачайте [VS Code](https://code.visualstudio.com/)
-2. Установите расширение **PlatformIO IDE** из Marketplace
-3. Перезапустите VS Code
-
-**Вариант Б: CLI**
+### 1. Установка PlatformIO
 ```bash
-pip install -U platformio
+pip install platformio
 ```
 
-### Шаг 2: Клонирование проекта
-
+### 2. Прошивка ESP32
 ```bash
 git clone https://github.com/krikz/robot_sensor_hub.git
 cd robot_sensor_hub
+pio run -t upload
 ```
 
-### Шаг 3: Сборка и прошивка
+### 3. Использование
 
-**VS Code:**
-1. Откройте папку проекта в VS Code
-2. Откройте PlatformIO (иконка "дома" слева)
-3. Нажмите **Build** (🔨)
-4. Подключите ESP32 через USB
-5. Нажмите **Upload** (➡️)
-6. Нажмите **Monitor** (🔌) для просмотра вывода
-
-**CLI:**
+**Интерактивный режим:**
 ```bash
-# Сборка
-pio run
-
-# Прошивка (измените порт при необходимости)
-pio run --target upload
-
-# Мониторинг
-pio device monitor
+python3 sensor_client.py /dev/ttyUSB0
 ```
 
-### Шаг 4: Просмотр данных
+**Из Python кода:**
+```python
+from sensor_client import SensorHubClient
 
-**Вариант 1: Встроенный Serial Monitor**
-- В VS Code: нажмите **Monitor** в PlatformIO
-- В CLI: `pio device monitor`
+client = SensorHubClient('/dev/ttyUSB0', 115200)
 
-**Вариант 2: Python скрипт**
-```bash
-python3 read_sensors.py /dev/ttyUSB0 115200
+# Список датчиков
+sensors = client.get_sensors()
+
+# Чтение датчика
+data = client.read_sensor(0, 0)  # AHT30 ID 0
+
+# Управление вентилятором
+client.set_fan_speed(0, 0.75)  # Fan 0 -> 75%
+
+client.close()
 ```
 
-### Шаг 5: Отправка команд
+## 📡 Протокол
 
-**Установить скорость вентилятора на 75%:**
-```bash
-python3 send_command.py /dev/ttyUSB0 "2,0,0,0.75"
+**Запросы (отправить в Serial):**
+```
+0           # Список датчиков
+1,0,0       # Читать AHT30[0]
+2,0,0.75    # Вентилятор 0 -> 75%
+3           # Тарировать весы
+4           # Все данные
 ```
 
-**Тарировать весы:**
-```bash
-python3 send_command.py /dev/ttyUSB0 "1,0,1,0"
-```
-
----
-
-## 📋 Подключение оборудования
-
-### Минимальная конфигурация
-
-```
-ESP32 Connections:
-├── I2C (Temperature/Humidity sensors)
-│   ├── SDA → GPIO21
-│   └── SCL → GPIO22
-├── HX711 (Weight sensor)
-│   ├── DAT → GPIO18
-│   └── CLK → GPIO19
-└── FANs (Cooling fans)
-    ├── FAN0 PWM → GPIO13
-    ├── FAN0 TACHO → GPIO15
-    ├── FAN1 PWM → GPIO14
-    └── FAN1 TACHO → GPIO16
-```
-
-### Схема подключения TCA9548A
-
-```
-TCA9548A Multiplexer:
-  VCC → 3.3V
-  GND → GND
-  SDA → GPIO21 (ESP32)
-  SCL → GPIO22 (ESP32)
-  
-  Channel 0-7 → AHT30 sensors
-```
-
----
-
-## 🔧 Решение проблем
-
-### Проблема: Не могу прошить ESP32
-
-**Решение:**
-1. Проверьте USB кабель (должен поддерживать данные)
-2. Измените порт в `platformio.ini`:
-   ```ini
-   upload_port = /dev/ttyUSB0  ; Linux/Mac
-   ; upload_port = COM3         ; Windows
-   ```
-3. Нажмите кнопку BOOT при прошивке
-
-### Проблема: Датчики не определяются
-
-**Решение:**
-1. Проверьте подключение SDA (21) и SCL (22)
-2. Проверьте питание 3.3V
-3. В Serial Monitor должно быть: `[AHT30] Sensor found on channel X`
-
-### Проблема: Permission denied на Linux
-
-**Решение:**
-```bash
-sudo usermod -a -G dialout $USER
-# Перелогиньтесь
-```
-
----
-
-## 📡 Формат данных
-
-### JSON вывод (каждую секунду)
+**Ответы (JSON):**
 ```json
-{
-  "devices": [
-    {"type":0,"id":0,"data_type":1,"value":25.3,"error":0},
-    {"type":2,"id":0,"data_type":4,"value":0.75,"error":0}
-  ]
-}
+{"status":0,"sensors":[...]}
+{"status":0,"type":0,"id":0,"data":[...]}
 ```
 
-### Команды (CSV формат)
+## 🔌 Подключение
+
 ```
-TYPE,ID,COMMAND,PARAMETER
-
-Примеры:
-2,0,0,0.75  - Fan 0 speed to 75%
-1,0,1,0     - Tare scale
+I2C: GPIO21 (SDA), GPIO22 (SCL)
+HX711: GPIO18 (DAT), GPIO19 (CLK)
+FAN0: GPIO13 (PWM), GPIO15 (TACHO)
+FAN1: GPIO14 (PWM), GPIO16 (TACHO)
 ```
 
----
+## 🤖 ROS интеграция
 
-## 📚 Дополнительная информация
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_client import SensorHubClient
 
-- **Полная документация:** `README.md`
-- **Архивные файлы:** `ARCHIVE.md`
-- **Примеры Python:** `read_sensors.py`, `send_command.py`
+class SensorNode(Node):
+    def __init__(self):
+        super().__init__('sensor_hub')
+        self.client = SensorHubClient('/dev/ttyUSB0')
+        self.timer = self.create_timer(1.0, self.read_data)
+    
+    def read_data(self):
+        data = self.client.get_all_data()
+        self.get_logger().info(f'{data}')
+```
 
----
-
-## 💡 Совет
-
-Для быстрой проверки работоспособности:
-1. Прошейте ESP32
-2. Откройте Serial Monitor (115200 baud)
-3. Вы должны увидеть JSON данные каждую секунду
-4. Отправьте команду `2,0,0,0.5` для проверки управления
-
-**Готово! Ваш Robot Sensor Hub работает! 🎉**
+**Готово! 🎉**
