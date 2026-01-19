@@ -67,6 +67,7 @@ build_flags = -DUSE_TARGET_my_config
 2,FAN_ID,SPEED   # Управление вентилятором (0.0-1.0)
 3                # Тарировать весы
 4                # Все данные
+5                # Версия прошивки
 ```
 
 ### Ответы (ESP32 → RPi)
@@ -74,6 +75,7 @@ JSON формат:
 ```json
 {"status":0,"sensors":[...]}
 {"status":0,"type":0,"id":0,"data":[...]}
+{"status":0,"version":{"firmware":"2.1.0","project":"Robot Sensor Hub",...}}
 ```
 
 Коды: 0=OK, 1=ERROR, 2=INVALID_CMD, 3=INVALID_PARAM
@@ -116,6 +118,7 @@ python3 sensor_client.py /dev/ttyUSB0
 from sensor_client import SensorHubClient
 
 client = SensorHubClient('/dev/ttyUSB0', 115200)
+version = client.get_version()
 sensors = client.get_sensors()
 data = client.read_sensor(0, 0)
 client.set_fan_speed(0, 0.75)

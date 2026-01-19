@@ -12,6 +12,7 @@ Protocol Commands:
     2,FAN_ID,SPEED - Set fan speed (0.0-1.0)
     3 - Tare scale
     4 - Get all sensor data
+    5 - Get firmware version information
 
 Usage:
     python3 sensor_client.py [port] [baudrate]
@@ -32,6 +33,7 @@ CMD_READ_SENSOR = 1
 CMD_SET_FAN_SPEED = 2
 CMD_TARE_SCALE = 3
 CMD_GET_ALL_DATA = 4
+CMD_GET_VERSION = 5
 
 # Device types
 DEVICE_TYPE_AHT30 = 0
@@ -104,6 +106,13 @@ class SensorHubClient:
             return response.get('data', [])
         return None
     
+    def get_version(self) -> Optional[Dict]:
+        """Get firmware version information"""
+        response = self._send_command(str(CMD_GET_VERSION))
+        if response and response.get('status') == 0:
+            return response.get('version', {})
+        return None
+    
     def close(self):
         """Close serial connection"""
         self.ser.close()
@@ -162,6 +171,17 @@ def print_all_data(all_data: List[Dict]):
     print()
 
 
+def print_version(version: Dict):
+    """Pretty print version information"""
+    print("\n=== Firmware Version ===")
+    print(f"  Project: {version.get('project', 'Unknown')}")
+    print(f"  Version: {version.get('firmware', 'Unknown')}")
+    print(f"  Build Date: {version.get('build_date', 'Unknown')} {version.get('build_time', 'Unknown')}")
+    print(f"  Protocol: {version.get('protocol', 'Unknown')}")
+    print(f"  Target: {version.get('target', 'Unknown')}")
+    print()
+
+
 def interactive_mode(client: SensorHubClient):
     """Interactive command-line interface"""
     print("\n=== Robot Sensor Hub Client ===")
@@ -171,6 +191,7 @@ def interactive_mode(client: SensorHubClient):
     print("  3 - Set fan speed")
     print("  4 - Tare scale")
     print("  5 - Get all data")
+    print("  6 - Get firmware version")
     print("  q - Quit")
     print()
     
@@ -212,6 +233,12 @@ def interactive_mode(client: SensorHubClient):
                     print_all_data(all_data)
                 else:
                     print("Failed to get all data")
+            elif cmd == '6':
+                version = client.get_version()
+                if version:
+                    print_version(version)
+                else:
+                    print("Failed to get version")
             else:
                 print("Invalid command")
         except ValueError as e:
@@ -231,6 +258,12 @@ def main():
     try:
         client = SensorHubClient(port, baudrate)
         print("Connected!")
+        
+        # Get and display version
+        print("\n--- Firmware Version ---")
+        version = client.get_version()
+        if version:
+            print_version(version)
         
         # Example usage
         print("\n--- Example: Getting available sensors ---")

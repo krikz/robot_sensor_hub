@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "target.h"
+#include "version.h"
 #include "sensors/aht30_reader.h"
 #include "sensors/hx711_reader.h"
 #include "sensors/fan_controller.h"
@@ -25,6 +26,7 @@
 #define CMD_SET_FAN_SPEED   2  // Set fan speed
 #define CMD_TARE_SCALE      3  // Tare scale
 #define CMD_GET_ALL_DATA    4  // Get all sensor data
+#define CMD_GET_VERSION     5  // Get firmware version information
 
 // Response codes
 #define RESP_OK             0
@@ -193,6 +195,21 @@ void cmd_get_all_data() {
     Serial.println("\n]}");
 }
 
+// CMD 5: Get firmware version information
+void cmd_get_version() {
+    Serial.print("{\"status\":0,\"version\":{");
+    Serial.printf("\"firmware\":\"%s\",", FW_VERSION_STRING);
+    Serial.printf("\"major\":%d,", FW_VERSION_MAJOR);
+    Serial.printf("\"minor\":%d,", FW_VERSION_MINOR);
+    Serial.printf("\"patch\":%d,", FW_VERSION_PATCH);
+    Serial.printf("\"build_date\":\"%s\",", FW_BUILD_DATE);
+    Serial.printf("\"build_time\":\"%s\",", FW_BUILD_TIME);
+    Serial.printf("\"project\":\"%s\",", FW_PROJECT_NAME);
+    Serial.printf("\"protocol\":\"%s\",", FW_PROTOCOL_VERSION);
+    Serial.printf("\"target\":\"%s\"", TARGET_NAME);
+    Serial.println("}}");
+}
+
 // Process incoming requests
 void process_request() {
     if (Serial.available()) {
@@ -215,6 +232,9 @@ void process_request() {
                     break;
                 case CMD_GET_ALL_DATA:
                     cmd_get_all_data();
+                    break;
+                case CMD_GET_VERSION:
+                    cmd_get_version();
                     break;
                 default:
                     send_response(RESP_INVALID_CMD, "Unknown command");
@@ -261,7 +281,8 @@ void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(1000);
     
-    Serial.printf("{\"status\":0,\"message\":\"Robot Sensor Hub v2.1 - Target: %s\"}\n", TARGET_NAME);
+    Serial.printf("{\"status\":0,\"message\":\"%s v%s - Target: %s\"}\n", 
+                  FW_PROJECT_NAME, FW_VERSION_STRING, TARGET_NAME);
     
     // Initialize sensors
     init_aht30_sensors();
