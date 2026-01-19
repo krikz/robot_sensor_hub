@@ -27,6 +27,9 @@ from sensor_client import SensorHubClient
 
 client = SensorHubClient('/dev/ttyUSB0', 115200)
 
+# Версия прошивки
+version = client.get_version()
+
 # Список датчиков
 sensors = client.get_sensors()
 
@@ -38,6 +41,18 @@ client.set_fan_speed(0, 0.75)  # Fan 0 -> 75%
 
 client.close()
 ```
+
+## 🔄 Обновление прошивки
+
+```bash
+# Собрать прошивку
+pio run -e default
+
+# Обновить через serial
+python3 firmware_update.py /dev/ttyUSB0 .pio/build/default/firmware.bin
+```
+
+См. `FIRMWARE_UPDATE.md` для деталей.
 
 ## 📡 Протокол
 

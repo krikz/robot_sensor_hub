@@ -112,6 +112,20 @@ pio run -e full -t upload
 python3 sensor_client.py /dev/ttyUSB0
 ```
 
+## 🔄 Обновление прошивки
+
+Используйте встроенный bootloader ESP32 для безопасного обновления:
+
+```bash
+# Собрать прошивку
+pio run -e default
+
+# Обновить ESP32
+python3 firmware_update.py /dev/ttyUSB0 .pio/build/default/firmware.bin
+```
+
+См. `FIRMWARE_UPDATE.md` для деталей.
+
 ## 🐍 Python API
 
 ```python
