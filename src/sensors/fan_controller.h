@@ -1,6 +1,6 @@
-// main/sensors/fan_controller.h
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 #include <stdbool.h>
 
